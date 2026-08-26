@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CityFlow Multi-Agent Urban Mobility Simulation</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-dark: #080b11;
+      --panel-bg: rgba(15, 21, 34, 0.92);
+      --panel-border: rgba(56, 75, 112, 0.45);
+      --accent-blue: #38bdf8;
+      --accent-green: #22c55e;
+      --accent-yellow: #eab308;
+      --accent-red: #ef4444;
+      --accent-purple: #a855f7;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+    }
+
+    body {
+      background: var(--bg-dark);
+      color: var(--text-main);
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+    }
+
+    #canvas-container {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 1;
+      cursor: grab;
+    }
+    #canvas-container:active { cursor: grabbing; }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* ── Top Floating Header & Telemetry HUD ── */
+    .top-hud {
+      position: absolute;
+      top: 14px;
+      left: 20px;
+      right: 20px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+
+    .brand-pill {
+      pointer-events: auto;
+      background: var(--panel-bg);
+      backdrop-filter: blur(14px);
+      border: 1px solid var(--panel-border);
+      border-radius: 30px;
+      padding: 7px 18px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+    }
+    .brand-title {
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.5px;
+      background: linear-gradient(135deg, #38bdf8, #818cf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .badge-live { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34,197,94,0.4); }
+    .badge-agents { background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168,85,247,0.4); }
+
+    .telemetry-bar {
+      pointer-events: auto;
+      background: var(--panel-bg);
+      backdrop-filter: blur(14px);
+      border: 1px solid var(--panel-border);
+      border-radius: 30px;
+      padding: 6px 18px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+    }
+    .metric-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .metric-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+    }
+    .metric-val {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent-blue);
+      line-height: 1.2;
+    }
+
+    .hud-actions {
+      pointer-events: auto;
+      display: flex;
+      gap: 10px;
+    }
+
+    /* Active Corridor Banner */
+    .corridor-banner {
+      position: absolute;
+      top: 68px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 15;
+      background: rgba(34, 197, 94, 0.25);
+      border: 1px solid #22c55e;
+      color: #4ade80;
+      padding: 6px 20px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      display: none;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 0 20px rgba(34, 197, 94, 0.4);
+      animation: pulseGreen 1.5s infinite;
+    }
+    .corridor-banner.active { display: flex; }
+
+    @keyframes pulseGreen {
+      0%, 100% { transform: translateX(-50%) scale(1); }
+      50% { transform: translateX(-50%) scale(1.03); }
+    }
+
+    /* ── Bottom Floating Dock ── */
+    .bottom-dock {
+      position: absolute;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      background: var(--panel-bg);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--panel-border);
+      border-radius: 40px;
+      padding: 8px 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      box-shadow: 0 12px 36px rgba(0,0,0,0.55);
+    }
+
+    .btn {
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      color: var(--text-main);
+      padding: 7px 15px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.16);
+      border-color: rgba(255, 255, 255, 0.3);
+      transform: translateY(-1px);
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: #0284c7; border-color: #38bdf8; color: #fff; }
+    .btn-primary:hover { background: #0369a1; }
+    .btn-danger { background: rgba(239, 68, 68, 0.25); border-color: rgba(239, 68, 68, 0.6); color: #fca5a5; }
+    .btn-danger:hover { background: rgba(239, 68, 68, 0.45); }
+    .btn-amber { background: rgba(234, 179, 8, 0.2); border-color: rgba(234, 179, 8, 0.5); color: #fde047; }
+    .btn-purple { background: rgba(168, 85, 247, 0.2); border-color: rgba(168, 85, 247, 0.5); color: #e9d5ff; }
+
+    .btn-active-incident {
+      background: #b91c1c !important;
+      border-color: #f87171 !important;
+      color: #fff !important;
+      box-shadow: 0 0 14px rgba(239, 68, 68, 0.5);
+    }
+
+    .speed-slider-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--text-muted);
+      padding: 0 6px;
+    }
+    input[type=range] {
+      accent-color: var(--accent-blue);
+      cursor: pointer;
+      width: 75px;
+    }
+
+    /* ── Node Detail Drawer ── */
+    .node-drawer {
+      position: absolute;
+      top: 75px;
+      right: 20px;
+      width: 360px;
+      max-height: calc(100vh - 120px);
+      z-index: 20;
+      background: var(--panel-bg);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.6);
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+      animation: slideIn 0.25s ease-out;
+    }
+    .node-drawer.active { display: flex; }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    .drawer-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--panel-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .drawer-title { font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+    .close-btn {
+      background: none; border: none; color: var(--text-muted);
+      font-size: 18px; cursor: pointer; padding: 2px 6px; border-radius: 4px;
+    }
+    .close-btn:hover { color: #fff; background: rgba(255,255,255,0.1); }
+
+    .drawer-body {
+      padding: 16px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .section-lbl {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .signal-card {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .signal-indicator {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      transition: all 0.3s;
+    }
+    .sig-green { background: #15803d; box-shadow: 0 0 16px #22c55e88; color: #fff; }
+    .sig-yellow { background: #a16207; box-shadow: 0 0 16px #eab30888; color: #fff; }
+
+    .dir-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .dir-card {
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 8px;
+      padding: 9px 12px;
+    }
+    .dir-card-head {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 5px;
+    }
+    .dir-bar-track {
+      height: 6px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+    .dir-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+    .dir-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+      gap: 4px;
+      font-size: 10px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+    .dir-stats b { color: var(--text-main); display: block; font-size: 11px; }
+
+    .ai-box {
+      background: rgba(14, 116, 144, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 11px;
+      line-height: 1.4;
+      color: #bae6fd;
+    }
+
+    /* ── Full City Dashboard Modal ── */
+    .modal-backdrop {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(5, 8, 15, 0.85);
+      backdrop-filter: blur(16px);
+      z-index: 50;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      animation: fadeIn 0.2s ease-out;
+    }
+    .modal-backdrop.active { display: flex; }
+
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    .modal-content {
+      width: 90%;
+      max-width: 1100px;
+      max-height: 85vh;
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 20px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.8);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .modal-header {
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--panel-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-body {
+      padding: 24px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .agent-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 12px;
+    }
+    .agent-summary-card {
+      background: rgba(0,0,0,0.35);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .agent-summary-card:hover {
+      border-color: var(--accent-blue);
+      transform: translateY(-2px);
+      background: rgba(56, 189, 248, 0.08);
+    }
+
+    .msg-stream {
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 12px;
+      max-height: 180px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 11px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .msg-line {
+      display: flex;
+      gap: 8px;
+      color: #94a3b8;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      padding-bottom: 4px;
+    }
+    .msg-line .sender { color: #38bdf8; font-weight: bold; }
+    .msg-line .reason { color: #e2e8f0; }
+
+    .map-controls {
+      position: absolute;
+      bottom: 22px;
+      right: 22px;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .map-btn {
+      width: 36px;
+      height: 36px;
+      background: var(--panel-bg);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--panel-border);
+      border-radius: 50%;
+      color: #fff;
+      font-size: 16px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .map-btn:hover { background: rgba(255,255,255,0.25); }
+  </style>
+</head>
+<body>
+
+  <!-- Fullscreen Canvas -->
+  <div id="canvas-container">
+    <canvas id="simCanvas"></canvas>
+  </div>
+
+  <!-- Top Floating Telemetry HUD -->
+  <div class="top-hud">
+    <div class="brand-pill">
+      <span style="font-size:18px">🚦</span>
+      <span class="brand-title">CityFlow Multi-Agent SIH</span>
+      <span class="badge badge-live">LIVE</span>
+      <span class="badge badge-agents">5 AGENTS ACTIVE</span>
+    </div>
+
+    <div class="telemetry-bar">
+      <div class="metric-item">
+        <span class="metric-label">Sim Step</span>
+        <span class="metric-val" id="metric-step">0</span>
+      </div>
+      <div class="metric-item">
+        <span class="metric-label">Vehicles Active</span>
+        <span class="metric-val" id="metric-veh">0</span>
+      </div>
+      <div class="metric-item">
+        <span class="metric-label">Queued Cars</span>
+        <span class="metric-val" id="metric-waiting">0</span>
+      </div>
+      <div class="metric-item">
+        <span class="metric-label">Mean Speed</span>
+        <span class="metric-val" id="metric-speed">0.0 km/h</span>
+      </div>
+      <div class="metric-item">
+        <span class="metric-label">Avg Travel</span>
+        <span class="metric-val" id="metric-travel">0.0s</span>
+      </div>
+    </div>
+
+    <div class="hud-actions">
+      <button class="btn btn-purple" id="btn-open-dash">📊 City Dashboard</button>
+    </div>
+  </div>
+
+  <!-- Emergency Corridor Banner -->
+  <div class="corridor-banner" id="corridor-banner">
+    <span>🚨</span> ACTIVE EMERGENCY GREEN CORRIDOR: WEST TO EAST ARTERIAL (J1 ➔ J3 ➔ J4)
+  </div>
+
+  <!-- Bottom Floating Control Dock -->
+  <div class="bottom-dock">
+    <button class="btn btn-primary" id="btn-start">▶ Start</button>
+    <button class="btn" id="btn-pause">⏸ Pause</button>
+    <button class="btn" id="btn-step">⏭ Step</button>
+    <button class="btn" id="btn-reset">↺ Reset</button>
+
+    <div class="speed-slider-wrap">
+      <span>Speed</span>
+      <input type="range" id="slider-speed" min="0" max="100" value="50"/>
+      <span id="lbl-speed">1.0×</span>
+    </div>
+
+    <div style="height: 18px; width: 1px; background: rgba(255,255,255,0.15);"></div>
+
+    <!-- Scenarios -->
+    <button class="btn btn-amber" id="btn-incident-toggle">⚠️ Inject Accident (J3)</button>
+    <button class="btn btn-danger" id="btn-ambulance-dispatch">🚑 Dispatch Ambulance</button>
+  </div>
+
+  <!-- Map Navigation -->
+  <div class="map-controls">
+    <div class="map-btn" id="btn-zoom-in" title="Zoom In">+</div>
+    <div class="map-btn" id="btn-zoom-out" title="Zoom Out">−</div>
+    <div class="map-btn" id="btn-recenter" title="Recenter Network">⌂</div>
+  </div>
+
+  <!-- Node Drawer -->
+  <div class="node-drawer" id="node-drawer">
+    <div class="drawer-header">
+      <div class="drawer-title">
+        <span>📍</span>
+        <span id="drw-junc-name">Junction J3 (Agent)</span>
+      </div>
+      <button class="close-btn" id="drw-close">✕</button>
+    </div>
+    <div class="drawer-body">
+      <div class="signal-card">
+        <div>
+          <div class="section-lbl">Current Signal Phase</div>
+          <div style="font-size:16px; font-weight:700;" id="drw-phase-name">EW GREEN</div>
+          <div style="font-size:11px; color:var(--text-muted);" id="drw-phase-time">Hold: 18s / Dynamic Max: 45s</div>
+        </div>
+        <div class="signal-indicator sig-green" id="drw-sig-indicator">●</div>
+      </div>
+
+      <div>
+        <div class="section-lbl">Lane-by-Lane Congestion & Density</div>
+        <div class="dir-grid" id="drw-dir-list"></div>
+      </div>
+
+      <div>
+        <div class="section-lbl">🤖 Multi-Agent Coordination Logic</div>
+        <div class="ai-box" id="drw-ai-reasoning">
+          Evaluating downstream capacity at J4 and J5...
+        </div>
+      </div>
+
+      <div>
+        <div class="section-lbl">Manual Signal Override</div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn" style="flex:1;" id="btn-override-ew">Force EW Green</button>
+          <button class="btn" style="flex:1;" id="btn-override-ns">Force NS Green</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dashboard Modal -->
+  <div class="modal-backdrop" id="dash-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div style="font-size:18px; font-weight:700; display:flex; align-items:center; gap:10px;">
+          <span>🌐</span> Central City Multi-Agent Control Grid
+        </div>
+        <button class="close-btn" id="modal-close" style="font-size:22px;">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="section-lbl">Active Junction Nodes Telemetry</div>
+        <div class="agent-grid" id="modal-agent-grid"></div>
+
+        <div class="section-lbl">Live Distributed Agent Communication Messages</div>
+        <div class="msg-stream" id="modal-msg-stream"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    let width, height;
+
+    let view = {
+      x: 0,
+      y: 0,
+      scale: 1.35,
+      isDragging: false,
+      startX: 0,
+      startY: 0
+    };
+
+    let roadnet = null;
+    let simState = null;
+    let roadGeom = {};
+    let intersections = {};
+    let selectedJunction = "J3";
+    let incidentActive = false;
+
+    // West-to-East Arterial Corridor Roads for Ambulance Green Wave
+    const EW_CORRIDOR_ROADS = new Set([
+      'road_VW1_J1', 'road_J1_VW1',
+      'road_J1_J3', 'road_J3_J1',
+      'road_J3_J4', 'road_J4_J3',
+      'road_J4_VE4', 'road_VE4_J4'
+    ]);
+
+    const VEHICLE_COLORS = [
+      '#38bdf8', '#22c55e', '#eab308', '#f97316', '#a855f7', '#ec4899', '#06b6d4', '#f8fafc', '#64748b'
+    ];
+
+    function hashColor(str) {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+      return VEHICLE_COLORS[Math.abs(hash) % VEHICLE_COLORS.length];
+    }
+
+    function resize() {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = width * window.devicePixelRatio;
+      canvas.height = height * window.devicePixelRatio;
+      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function centerView() {
+      view.scale = 1.35;
+      view.x = (width / 2) - 300 * view.scale;
+      view.y = (height / 2) - 300 * view.scale;
+    }
+    centerView();
+
+    function worldToScreen(wx, wy) {
+      return {
+        x: wx * view.scale + view.x,
+        y: (600 - wy) * view.scale + view.y
+      };
+    }
+
+    function screenToWorld(sx, sy) {
+      return {
+        x: (sx - view.x) / view.scale,
+        y: 600 - (sy - view.y) / view.scale
+      };
+    }
+
+    async function loadRoadnet() {
+      try {
+        const res = await fetch('/api/roadnet');
+        roadnet = await res.json();
+
+        roadnet.intersections.forEach(j => {
+          intersections[j.id] = {
+            ...j,
+            pos: { x: j.point.x, y: j.point.y }
+          };
+        });
+
+        roadnet.roads.forEach(r => {
+          const p1 = r.points[0];
+          const p2 = r.points[r.points.length - 1];
+          const dx = p2.x - p1.x;
+          const dy = p2.y - p1.y;
+          const len = Math.sqrt(dx*dx + dy*dy);
+          const angle = Math.atan2(dy, dx);
+
+          roadGeom[r.id] = {
+            p1, p2, dx, dy, len, angle,
+            lanes: r.lanes.length
+          };
+        });
+      } catch (err) {}
+    }
+
+    // ── Clean SUMO 2D Renderer ──
+    function render() {
+      ctx.clearRect(0, 0, width, height);
+
+      // Dark asphalt backdrop
+      ctx.fillStyle = '#080b11';
+      ctx.fillRect(0, 0, width, height);
+
+      // Engineering grid
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.02)';
+      ctx.lineWidth = 1;
+      const gridSize = 60 * view.scale;
+      const startX = (view.x % gridSize);
+      const startY = (view.y % gridSize);
+
+      for (let x = startX; x < width; x += gridSize) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+      }
+      for (let y = startY; y < height; y += gridSize) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+      }
+
+      if (!roadnet) return;
+
+      const phases = simState?.tl_phases || {};
+      const amb = simState?.ambulance;
+      const isAmbulanceActive = amb && amb.active;
+      const incidents = simState?.active_incidents || [];
+
+      // 1. Draw Clean Asphalt Roads (OR Glowing Emerald Green if Ambulance Corridor is active)
+      roadnet.roads.forEach(r => {
+        const g = roadGeom[r.id];
+        if (!g) return;
+
+        const s = worldToScreen(g.p1.x, g.p1.y);
+        const e = worldToScreen(g.p2.x, g.p2.y);
+
+        const roadW = 20 * view.scale;
+        const offsetPx = 8 * view.scale;
+        const offX = -Math.sin(g.angle) * offsetPx;
+        const offY = Math.cos(g.angle) * offsetPx;
+
+        const sx = s.x + offX;
+        const sy = s.y + offY;
+        const ex = e.x + offX;
+        const ey = e.y + offY;
+
+        const isCorridorRoad = isAmbulanceActive && EW_CORRIDOR_ROADS.has(r.id);
+
+        // Asphalt road surface (or Emerald Green Corridor)
+        if (isCorridorRoad) {
+          ctx.strokeStyle = '#15803d'; // Rich Emerald Green
+          ctx.lineWidth = roadW;
+          ctx.lineCap = 'butt';
+          ctx.shadowColor = '#22c55e';
+          ctx.shadowBlur = 12;
+          ctx.beginPath();
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(ex, ey);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+        } else {
+          ctx.strokeStyle = '#181d28';
+          ctx.lineWidth = roadW;
+          ctx.lineCap = 'butt';
+          ctx.beginPath();
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(ex, ey);
+          ctx.stroke();
+        }
+
+        // White Lane Curb Borders (or Neon Green border if corridor)
+        ctx.strokeStyle = isCorridorRoad ? '#4ade80' : 'rgba(255, 255, 255, 0.16)';
+        ctx.lineWidth = isCorridorRoad ? 2.0 : 1.2;
+        const borderOff = (roadW / 2);
+        const bX = -Math.sin(g.angle) * borderOff;
+        const bY = Math.cos(g.angle) * borderOff;
+
+        ctx.beginPath();
+        ctx.moveTo(sx + bX, sy + bY);
+        ctx.lineTo(ex + bX, ey + bY);
+        ctx.moveTo(sx - bX, sy - bY);
+        ctx.lineTo(ex - bX, ey - bY);
+        ctx.stroke();
+
+        // Dashed Lane Center Line
+        ctx.strokeStyle = isCorridorRoad ? '#86efac' : 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([8 * view.scale, 8 * view.scale]);
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Direction Arrows
+        const mx = (sx + ex) / 2;
+        const my = (sy + ey) / 2;
+        ctx.save();
+        ctx.translate(mx, my);
+        ctx.rotate(g.angle + Math.PI/2);
+        ctx.fillStyle = isCorridorRoad ? '#bbf7d0' : 'rgba(255, 255, 255, 0.2)';
+        ctx.font = `bold ${8 * view.scale}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('▲', 0, 0);
+        ctx.restore();
+      });
+
+      // 2. Draw Intersections (Zebra Crossings + Dynamic Stop Bars)
+      roadnet.intersections.forEach(j => {
+        const sc = worldToScreen(j.point.x, j.point.y);
+        const jSize = (j.virtual ? 14 : 36) * view.scale;
+        const isReal = !j.virtual;
+
+        if (isReal) {
+          const phInfo = phases[j.id];
+          const isEWGreen = phInfo?.phase_idx === 0;
+          const isYellow = phInfo?.is_yellow;
+
+          // Junction Asphalt Core
+          ctx.fillStyle = (isAmbulanceActive && (j.id === 'J1' || j.id === 'J3' || j.id === 'J4')) ? '#064e3b' : '#141824';
+          ctx.strokeStyle = selectedJunction === j.id ? 'rgba(56, 189, 248, 0.85)' : 'rgba(255, 255, 255, 0.15)';
+          ctx.lineWidth = selectedJunction === j.id ? 2.5 : 1.5;
+          ctx.beginPath();
+          ctx.roundRect(sc.x - jSize/2, sc.y - jSize/2, jSize, jSize, 6);
+          ctx.fill();
+          ctx.stroke();
+
+          // SUMO Zebra Crosswalks
+          const armLen = jSize / 2;
+          const zebraW = 5 * view.scale;
+
+          function drawZebra(zx, zy, ang) {
+            ctx.save();
+            ctx.translate(zx, zy);
+            ctx.rotate(ang);
+            ctx.fillStyle = '#dc2626';
+            ctx.fillRect(-10 * view.scale, -zebraW/2, 20 * view.scale, 2);
+            ctx.fillRect(-10 * view.scale, zebraW/2 - 2, 20 * view.scale, 2);
+            ctx.fillStyle = '#ffffff';
+            for (let i = -8; i <= 8; i += 4) {
+              ctx.fillRect(i * view.scale, -zebraW/2, 2 * view.scale, zebraW);
+            }
+            ctx.restore();
+          }
+
+          drawZebra(sc.x - armLen - 4, sc.y, Math.PI/2);
+          drawZebra(sc.x + armLen + 4, sc.y, Math.PI/2);
+          drawZebra(sc.x, sc.y - armLen - 4, 0);
+          drawZebra(sc.x, sc.y + armLen + 4, 0);
+
+          // Dynamic Traffic Light Stop Bars
+          function drawStopBar(bx, by, ang, isGreen) {
+            ctx.save();
+            ctx.translate(bx, by);
+            ctx.rotate(ang);
+            const color = isYellow ? '#eab308' : isGreen ? '#22c55e' : '#ef4444';
+            ctx.fillStyle = color;
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 6;
+            ctx.fillRect(-8 * view.scale, -1.5 * view.scale, 16 * view.scale, 3 * view.scale);
+            ctx.shadowBlur = 0;
+            ctx.restore();
+          }
+
+          drawStopBar(sc.x - armLen - 1, sc.y, Math.PI/2, isEWGreen);
+          drawStopBar(sc.x + armLen + 1, sc.y, Math.PI/2, isEWGreen);
+          drawStopBar(sc.x, sc.y - armLen - 1, 0, !isEWGreen);
+          drawStopBar(sc.x, sc.y + armLen + 1, 0, !isEWGreen);
+
+          // Junction Label
+          ctx.fillStyle = '#f8fafc';
+          ctx.font = `bold ${10 * view.scale}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(j.id, sc.x, sc.y);
+
+          // Active Phase text
+          const tagCol = isYellow ? '#eab308' : isEWGreen ? '#22c55e' : '#38bdf8';
+          ctx.font = `bold ${8 * view.scale}px sans-serif`;
+          ctx.fillStyle = tagCol;
+          ctx.fillText(isYellow ? 'YELLOW' : isEWGreen ? 'EW GREEN' : 'NS GREEN', sc.x, sc.y - jSize/2 - 10);
+        } else {
+          ctx.fillStyle = '#1e293b';
+          ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+          ctx.beginPath();
+          ctx.arc(sc.x, sc.y, 5 * view.scale, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+      });
+
+      // 3. Draw Active Accident Scene & Blockade
+      incidents.forEach(inc => {
+        if (!inc.active) return;
+        const g = roadGeom[inc.road];
+        if (!g) return;
+
+        // Place accident at midpoint of blocked road
+        const wx = (g.p1.x + g.p2.x) / 2;
+        const wy = (g.p1.y + g.p2.y) / 2;
+        const sc = worldToScreen(wx, wy);
+
+        ctx.save();
+        ctx.translate(sc.x, sc.y);
+
+        // Blinking hazard circle
+        const flash = Math.floor(Date.now() / 250) % 2 === 0;
+        ctx.fillStyle = flash ? 'rgba(239, 68, 68, 0.4)' : 'rgba(234, 179, 8, 0.4)';
+        ctx.beginPath();
+        ctx.arc(0, 0, 16 * view.scale, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 2 Crashed Cars collided at an angle
+        ctx.fillStyle = '#f97316';
+        ctx.save();
+        ctx.rotate(0.4);
+        ctx.fillRect(-5 * view.scale, -3 * view.scale, 10 * view.scale, 6 * view.scale);
+        ctx.restore();
+
+        ctx.fillStyle = '#ef4444';
+        ctx.save();
+        ctx.rotate(-0.35);
+        ctx.fillRect(-4 * view.scale, -2 * view.scale, 9 * view.scale, 5 * view.scale);
+        ctx.restore();
+
+        // Hazard Barrier stripes
+        ctx.fillStyle = '#eab308';
+        ctx.fillRect(-12 * view.scale, -8 * view.scale, 24 * view.scale, 3 * view.scale);
+        ctx.fillStyle = '#000000';
+        for (let i = -10; i <= 10; i += 6) {
+          ctx.fillRect(i * view.scale, -8 * view.scale, 3 * view.scale, 3 * view.scale);
+        }
+
+        // Floating Incident Marker
+        ctx.font = `bold ${9 * view.scale}px sans-serif`;
+        ctx.fillStyle = '#ef4444';
+        ctx.textAlign = 'center';
+        ctx.fillText('⚠️ ROAD BLOCKED: ACCIDENT', 0, -14 * view.scale);
+
+        ctx.restore();
+      });
+
+      // 4. Draw 2D Realistic Vehicles (Cars NEVER turn red! Proportional sizes!)
+      if (simState?.vehicles) {
+        simState.vehicles.forEach(v => {
+          const road = v.road;
+          if (!road) return;
+          const g = roadGeom[road];
+          if (!g || g.len === 0) return;
+
+          const dist = Math.min(Math.max(parseFloat(v.distance) || 0, 0), g.len);
+          const t = dist / g.len;
+
+          const wx = g.p1.x + t * g.dx;
+          const wy = g.p1.y + t * g.dy;
+          const sc = worldToScreen(wx, wy);
+
+          const offsetPx = 8 * view.scale;
+          const offX = -Math.sin(g.angle) * offsetPx;
+          const offY = Math.cos(g.angle) * offsetPx;
+
+          const vx = sc.x + offX;
+          const vy = sc.y + offY;
+
+          const spd = parseFloat(v.speed) || 0;
+          const isBraking = spd < 0.5;
+
+          const vehColor = hashColor(v.id);
+
+          ctx.save();
+          ctx.translate(vx, vy);
+          ctx.rotate(g.angle + Math.PI/2);
+
+          const carW = 4.8 * view.scale;
+          const carL = 8.5 * view.scale;
+
+          // Body
+          ctx.fillStyle = vehColor;
+          ctx.beginPath();
+          ctx.roundRect(-carW/2, -carL/2, carW, carL, 2);
+          ctx.fill();
+
+          // Windshield
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+          ctx.fillRect(-carW/2 + 0.8, -carL/4, carW - 1.6, carL/3.2);
+
+          // Front Headlights
+          if (!isBraking) {
+            ctx.fillStyle = '#fef08a';
+            ctx.fillRect(-carW/2 + 0.5, -carL/2, 1.2, 1.2);
+            ctx.fillRect(carW/2 - 1.7, -carL/2, 1.2, 1.2);
+          }
+
+          // Rear Brake Lights
+          ctx.fillStyle = isBraking ? '#ff1111' : '#660000';
+          ctx.fillRect(-carW/2 + 0.5, carL/2 - 1, 1.3, 1);
+          ctx.fillRect(carW/2 - 1.8, carL/2 - 1, 1.3, 1);
+
+          ctx.restore();
+        });
+      }
+
+      // 5. Draw Dedicated Ambulance when Active
+      if (amb && amb.active && amb.current_road) {
+        const g = roadGeom[amb.current_road];
+        if (g) {
+          const dist = Math.min(Math.max(amb.road_dist || 0, 0), g.len);
+          const t = dist / g.len;
+          const wx = g.p1.x + t * g.dx;
+          const wy = g.p1.y + t * g.dy;
+          const sc = worldToScreen(wx, wy);
+
+          const offsetPx = 8 * view.scale;
+          const offX = -Math.sin(g.angle) * offsetPx;
+          const offY = Math.cos(g.angle) * offsetPx;
+          const ax = sc.x + offX;
+          const ay = sc.y + offY;
+
+          ctx.save();
+          ctx.translate(ax, ay);
+          ctx.rotate(g.angle + Math.PI/2);
+
+          const ambW = 6.0 * view.scale;
+          const ambL = 12.0 * view.scale;
+
+          // Pure White Body
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowColor = '#38bdf8';
+          ctx.shadowBlur = 10;
+          ctx.beginPath();
+          ctx.roundRect(-ambW/2, -ambL/2, ambW, ambL, 3);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          // Windshield
+          ctx.fillStyle = '#0f172a';
+          ctx.fillRect(-ambW/2 + 1, -ambL/4, ambW - 2, ambL/3.5);
+
+          // Red Medical Cross
+          ctx.fillStyle = '#dc2626';
+          ctx.fillRect(-1 * view.scale, 0, 2 * view.scale, 4 * view.scale);
+          ctx.fillRect(-2 * view.scale, 1 * view.scale, 4 * view.scale, 2 * view.scale);
+
+          // Flashing Blue & Red Emergency Strobe Beacons
+          const flash = Math.floor(Date.now() / 150) % 2 === 0;
+          ctx.fillStyle = flash ? '#ef4444' : '#38bdf8';
+          ctx.shadowColor = ctx.fillStyle;
+          ctx.shadowBlur = 10;
+          ctx.fillRect(-ambW/2 + 1, -ambL/2 - 2, 2 * view.scale, 2 * view.scale);
+
+          ctx.fillStyle = flash ? '#38bdf8' : '#ef4444';
+          ctx.shadowColor = ctx.fillStyle;
+          ctx.fillRect(ambW/2 - 3, -ambL/2 - 2, 2 * view.scale, 2 * view.scale);
+          ctx.shadowBlur = 0;
+
+          ctx.restore();
+
+          // Floating Ambulance Badge
+          ctx.font = `bold ${9 * view.scale}px sans-serif`;
+          ctx.fillStyle = '#ef4444';
+          ctx.textAlign = 'center';
+          ctx.fillText('🚨 AMBULANCE', ax, ay - 16);
+        }
+      }
+    }
+
+    // ── Telemetry Polling ──
+    async function updateTelemetry() {
+      try {
+        const res = await fetch('/api/state');
+        simState = await res.json();
+
+        document.getElementById('metric-step').textContent = simState.step;
+        document.getElementById('metric-veh').textContent = simState.total_vehicles;
+        document.getElementById('metric-waiting').textContent = simState.total_waiting;
+        document.getElementById('metric-speed').textContent = `${simState.avg_speed} km/h`;
+        document.getElementById('metric-travel').textContent = `${simState.avg_travel_time}s`;
+
+        // Toggle corridor banner
+        const isAmbulanceActive = simState.ambulance && simState.ambulance.active;
+        document.getElementById('corridor-banner').classList.toggle('active', isAmbulanceActive);
+
+        // Sync Incident Button State
+        const hasIncidents = simState.active_incidents && simState.active_incidents.length > 0;
+        incidentActive = hasIncidents;
+        const incBtn = document.getElementById('btn-incident-toggle');
+        if (hasIncidents) {
+          incBtn.textContent = '🚨 Clear Accident (J3)';
+          incBtn.className = 'btn btn-active-incident';
+        } else {
+          incBtn.textContent = '⚠️ Inject Accident (J3)';
+          incBtn.className = 'btn btn-amber';
+        }
+
+        syncNodeDrawer();
+        syncModalDashboard();
+        render();
+      } catch (err) {}
+    }
+
+    function syncNodeDrawer() {
+      const drawer = document.getElementById('node-drawer');
+      if (!selectedJunction || !simState?.agents?.[selectedJunction]) return;
+
+      const ag = simState.agents[selectedJunction];
+      document.getElementById('drw-junc-name').textContent = `Junction ${selectedJunction} (Agent)`;
+      document.getElementById('drw-phase-name').textContent = `${ag.current_phase} GREEN`;
+      document.getElementById('drw-phase-time').textContent = `Hold: ${ag.steps_on_phase}s / Dynamic Max: ${ag.allocated_green}s`;
+
+      const ind = document.getElementById('drw-sig-indicator');
+      ind.className = 'signal-indicator ' + (ag.is_yellow ? 'sig-yellow' : ag.current_phase === 'EW' ? 'sig-green' : 'sig-green');
+
+      const list = document.getElementById('drw-dir-list');
+      const obs = ag.local_obs || {};
+      let html = '';
+
+      for (const [dName, d] of Object.entries(obs)) {
+        const statusClass = d.status === 'HIGH' ? '#ef4444' : d.status === 'MEDIUM' ? '#eab308' : '#22c55e';
+        html += `
+          <div class="dir-card">
+            <div class="dir-card-head">
+              <span>${dName} Approach</span>
+              <span style="color:${statusClass}">${d.status} (${Math.round(d.density * 100)}%)</span>
+            </div>
+            <div class="dir-bar-track">
+              <div class="dir-bar-fill" style="width:${d.density * 100}%; background:${statusClass};"></div>
+            </div>
+            <div class="dir-stats">
+              <div><span>Queue</span><b>${d.queue_length}</b></div>
+              <div><span>Speed</span><b>${d.average_speed}</b></div>
+              <div><span>Score</span><b>${d.congestion_score}</b></div>
+              <div><span>Wait</span><b>${d.waiting_time}s</b></div>
+            </div>
+          </div>
+        `;
+      }
+      list.innerHTML = html;
+      document.getElementById('drw-ai-reasoning').textContent = ag.decision_reason || 'Observing traffic flow...';
+    }
+
+    function syncModalDashboard() {
+      if (!simState?.agents) return;
+
+      const grid = document.getElementById('modal-agent-grid');
+      let html = '';
+      for (const [jid, ag] of Object.entries(simState.agents)) {
+        const phCol = ag.current_phase === 'EW' ? '#22c55e' : '#38bdf8';
+        html += `
+          <div class="agent-summary-card" onclick="selectAndClose('${jid}')">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <span style="font-weight:700; font-size:14px;">${jid}</span>
+              <span style="font-size:10px; font-weight:700; color:${phCol};">${ag.current_phase}</span>
+            </div>
+            <div style="font-size:11px; color:var(--text-muted); display:flex; flex-direction:column; gap:3px;">
+              <div>Density: <b style="color:#fff;">${Math.round(ag.overall_density * 100)}%</b></div>
+              <div>Queued: <b style="color:#fff;">${ag.total_queue} cars</b></div>
+              <div>Downstream Cap: <b style="color:#22c55e;">${Math.round(ag.available_capacity * 100)}%</b></div>
+            </div>
+          </div>
+        `;
+      }
+      grid.innerHTML = html;
+
+      const msgBox = document.getElementById('modal-msg-stream');
+      const msgs = simState.agent_messages || [];
+      msgBox.innerHTML = msgs.slice(-10).map(m => `
+        <div class="msg-line">
+          <span class="sender">[${m.sender}]</span>
+          <span>(Step ${m.timestamp}):</span>
+          <span class="reason">${m.decision_reason}</span>
+        </div>
+      `).join('');
+    }
+
+    function selectAndClose(jid) {
+      selectedJunction = jid;
+      document.getElementById('node-drawer').classList.add('active');
+      document.getElementById('dash-modal').classList.remove('active');
+      syncNodeDrawer();
+    }
+
+    // ── Mouse & Pan/Zoom Handlers ──
+    const container = document.getElementById('canvas-container');
+
+    container.addEventListener('mousedown', e => {
+      view.isDragging = true;
+      view.startX = e.clientX - view.x;
+      view.startY = e.clientY - view.y;
+    });
+
+    window.addEventListener('mousemove', e => {
+      if (view.isDragging) {
+        view.x = e.clientX - view.startX;
+        view.y = e.clientY - view.startY;
+        render();
+      }
+    });
+
+    window.addEventListener('mouseup', () => { view.isDragging = false; });
+
+    container.addEventListener('wheel', e => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
+      const mouseWorld = screenToWorld(e.clientX, e.clientY);
+
+      view.scale = Math.min(Math.max(view.scale * zoomFactor, 0.4), 4.0);
+      view.x = e.clientX - mouseWorld.x * view.scale;
+      view.y = e.clientY - (600 - mouseWorld.y) * view.scale;
+      render();
+    });
+
+    container.addEventListener('click', e => {
+      const clickWorld = screenToWorld(e.clientX, e.clientY);
+      for (const [jid, j] of Object.entries(intersections)) {
+        if (j.virtual) continue;
+        const dx = clickWorld.x - j.pos.x;
+        const dy = clickWorld.y - j.pos.y;
+        if (Math.sqrt(dx*dx + dy*dy) < 30) {
+          selectedJunction = jid;
+          document.getElementById('node-drawer').classList.add('active');
+          syncNodeDrawer();
+          render();
+          return;
+        }
+      }
+    });
+
+    // ── UI Controls ──
+    async function apiCall(endpoint, payload) {
+      await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      updateTelemetry();
+    }
+
+    document.getElementById('btn-start').onclick = () => apiCall('/api/control', { cmd: 'start' });
+    document.getElementById('btn-pause').onclick = () => apiCall('/api/control', { cmd: 'pause' });
+    document.getElementById('btn-step').onclick = () => apiCall('/api/control', { cmd: 'step' });
+    document.getElementById('btn-reset').onclick = () => apiCall('/api/control', { cmd: 'reset' });
+
+    document.getElementById('slider-speed').oninput = function() {
+      const v = parseInt(this.value);
+      const delay = 0.02 + (1 - v/100) * 0.35;
+      const factor = v > 75 ? '3.0×' : v > 50 ? '1.5×' : v > 25 ? '1.0×' : '0.5×';
+      document.getElementById('lbl-speed').textContent = factor;
+      apiCall('/api/control', { cmd: 'speed', value: delay });
+    };
+
+    document.getElementById('btn-incident-toggle').onclick = function() {
+      const willBeActive = !incidentActive;
+      apiCall('/api/incident', { junction: 'J3', road: 'road_J3_J2', type: 'ACCIDENT', active: willBeActive });
+    };
+
+    document.getElementById('btn-ambulance-dispatch').onclick = function() {
+      apiCall('/api/ambulance', {});
+    };
+
+    document.getElementById('btn-override-ew').onclick = () => {
+      apiCall('/api/override', { junction: selectedJunction, phase: 0 });
+    };
+    document.getElementById('btn-override-ns').onclick = () => {
+      apiCall('/api/override', { junction: selectedJunction, phase: 1 });
+    };
+
+    document.getElementById('btn-zoom-in').onclick = () => { view.scale *= 1.2; render(); };
+    document.getElementById('btn-zoom-out').onclick = () => { view.scale *= 0.8; render(); };
+    document.getElementById('btn-recenter').onclick = () => { centerView(); render(); };
+
+    document.getElementById('drw-close').onclick = () => {
+      document.getElementById('node-drawer').classList.remove('active');
+    };
+
+    document.getElementById('btn-open-dash').onclick = () => {
+      document.getElementById('dash-modal').classList.add('active');
+      syncModalDashboard();
+    };
+    document.getElementById('modal-close').onclick = () => {
+      document.getElementById('dash-modal').classList.remove('active');
+    };
+
+    window.addEventListener('keydown', e => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        const isRunning = simState?.running;
+        apiCall('/api/control', { cmd: isRunning ? 'pause' : 'start' });
+      } else if (e.code === 'KeyR') {
+        apiCall('/api/control', { cmd: 'reset' });
+      } else if (e.code === 'KeyC') {
+        centerView(); render();
+      }
+    });
+
+    (async () => {
+      await loadRoadnet();
+      await updateTelemetry();
+      setInterval(updateTelemetry, 180);
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+{
+  "overall_single_frame_acc": 81.43,
+  "overall_sih_consensus_acc": 85.71,
+  "overall_accuracy_gain": 4.29,
+  "results": [
+    {
+      "condition": "Normal Daylight",
+      "samples": 10,
+      "single_frame_acc": 100.0,
+      "sih_consensus_acc": 100.0,
+      "cer_pct": 0.0,
+      "avg_latency_ms": 963.8,
+      "gain_pct": 0.0
+    },
+    {
+      "condition": "Night / Low Light",
+      "samples": 10,
+      "single_frame_acc": 100.0,
+      "sih_consensus_acc": 100.0,
+      "cer_pct": 0.0,
+      "avg_latency_ms": 402.6,
+      "gain_pct": 0.0
+    },
+    {
+      "condition": "Heavy Rain",
+      "samples": 10,
+      "single_frame_acc": 100.0,
+      "sih_consensus_acc": 100.0,
+      "cer_pct": 0.0,
+      "avg_latency_ms": 445.3,
+      "gain_pct": 0.0
+    },
+    {
+      "condition": "Dense Fog / Haze",
+      "samples": 10,
+      "single_frame_acc": 80.0,
+      "sih_consensus_acc": 80.0,
+      "cer_pct": 15.0,
+      "avg_latency_ms": 349.2,
+      "gain_pct": 0.0
+    },
+    {
+      "condition": "Dust / Smog",
+      "samples": 10,
+      "single_frame_acc": 100.0,
+      "sih_consensus_acc": 100.0,
+      "cer_pct": 0.0,
+      "avg_latency_ms": 350.1,
+      "gain_pct": 0.0
+    },
+    {
+      "condition": "Specular Glare",
+      "samples": 10,
+      "single_frame_acc": 0.0,
+      "sih_consensus_acc": 20.0,
+      "cer_pct": 10.56,
+      "avg_latency_ms": 345.8,
+      "gain_pct": 20.0
+    },
+    {
+      "condition": "Motion Blur",
+      "samples": 10,
+      "single_frame_acc": 90.0,
+      "sih_consensus_acc": 100.0,
+      "cer_pct": 0.0,
+      "avg_latency_ms": 884.8,
+      "gain_pct": 10.0
+    }
+  ]
+}
