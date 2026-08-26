@@ -1,0 +1,188 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClearWays | NEXUS Command Interface</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Inter:wght@300;400;500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/build/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <canvas id="bg-canvas"></canvas>
+    <div class="scanlines"></div>
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+    <div id="app">
+        <aside id="sidebar">
+            <div class="sb-logo">
+                <div class="sb-logo-icon"><i class="fas fa-traffic-light"></i></div>
+                <div>
+                    <div class="sb-logo-name">Clear<span>Ways</span></div>
+                    <div class="sb-logo-ver">NEXUS v2.0</div>
+                </div>
+            </div>
+            <div class="sb-sys-status">
+                <div class="sb-status-dot"></div>
+                <span>SYSTEM ONLINE</span>
+                <span class="sb-ping" id="sb-ping">&#9679;</span>
+            </div>
+            <nav id="sb-nav">
+                <button class="nav-btn active" data-view="overview"><i class="fas fa-city"></i><span>Overview</span></button>
+                <button class="nav-btn" data-view="analytics"><i class="fas fa-chart-line"></i><span>Analytics</span></button>
+                <button class="nav-btn" data-view="incidents"><i class="fas fa-bell"></i><span>Incidents</span><span class="nav-badge" id="nav-badge">0</span></button>
+            </nav>
+            <div class="sb-metrics">
+                <div class="sb-metric"><div class="sb-metric-label">ACTIVE NODES</div><div class="sb-metric-val">100</div></div>
+                <div class="sb-metric"><div class="sb-metric-label">DATA RATE</div><div class="sb-metric-val" id="sb-data-rate">3.2 MB/s</div></div>
+                <div class="sb-metric"><div class="sb-metric-label">UPTIME</div><div class="sb-metric-val">99.8%</div></div>
+            </div>
+            <div class="sb-clock">
+                <div class="sb-clock-time" id="clock-time">--:--:--</div>
+                <div class="sb-clock-date" id="clock-date">---</div>
+                <div class="sb-clock-city">BHUBANESWAR, INDIA</div>
+            </div>
+        </aside>
+        <main id="main">
+            <header id="topbar">
+                <div class="topbar-l">
+                    <h1 class="topbar-title" id="view-title">TRAFFIC COMMAND CENTER</h1>
+                    <div class="topbar-sub" id="view-sub">Bhubaneswar Metropolitan Area &mdash; Live Feed</div>
+                </div>
+                <div class="topbar-r">
+                    <div class="topbar-kpi"><span class="topbar-kpi-label">CONGESTION</span><span class="topbar-kpi-val" id="top-congestion">--%</span></div>
+                    <div class="topbar-divider"></div>
+                    <div class="topbar-kpi"><span class="topbar-kpi-label">AVG SPEED</span><span class="topbar-kpi-val" id="top-speed">-- km/h</span></div>
+                    <div class="topbar-divider"></div>
+                    <button class="icon-btn" id="fullscreen-btn" title="Toggle Fullscreen"><i class="fas fa-expand"></i></button>
+                </div>
+            </header>
+            <div id="views">
+                <!-- OVERVIEW -->
+                <div class="view active" id="view-overview">
+                    <div class="kpi-row">
+                        <div class="kpi-card"><div class="kpi-icon-wrap cyan"><i class="fas fa-crosshairs"></i></div><div class="kpi-info"><div class="kpi-num" id="kpi-nodes">0</div><div class="kpi-name">Total Nodes</div><div class="kpi-detail">30 unique intersections</div></div></div>
+                        <div class="kpi-card"><div class="kpi-icon-wrap amber"><i class="fas fa-traffic-light"></i></div><div class="kpi-info"><div class="kpi-num" id="kpi-congestion">--%</div><div class="kpi-name">City Congestion</div><div class="kpi-detail" id="kpi-cong-detail">Live average</div></div></div>
+                        <div class="kpi-card"><div class="kpi-icon-wrap green"><i class="fas fa-tachometer-alt"></i></div><div class="kpi-info"><div class="kpi-num" id="kpi-speed">-- km/h</div><div class="kpi-name">Avg Speed</div><div class="kpi-detail">City-wide average</div></div></div>
+                        <div class="kpi-card"><div class="kpi-icon-wrap blue"><i class="fas fa-brain"></i></div><div class="kpi-info"><div class="kpi-num" id="kpi-ai">0%</div><div class="kpi-name">AI Accuracy</div><div class="kpi-detail">Prediction confidence</div></div></div>
+                    </div>
+                    <div class="sec-head">
+                        <div class="sec-title"><i class="fas fa-th"></i> BHUBANESWAR INTERSECTION MATRIX</div>
+                        <div class="sec-legend">
+                            <div class="leg-item"><span class="leg-dot red"></span>Critical</div>
+                            <div class="leg-item"><span class="leg-dot amber"></span>Moderate</div>
+                            <div class="leg-item"><span class="leg-dot green"></span>Clear</div>
+                        </div>
+                    </div>
+                    <div class="glass-panel grid-panel"><div id="city-grid"></div></div>
+                    <div id="alert-ticker">
+                        <div class="ticker-label"><i class="fas fa-satellite-dish"></i> LIVE</div>
+                        <div class="ticker-wrap"><div class="ticker-inner" id="ticker-inner"><span class="ticker-item">Initializing...</span></div></div>
+                    </div>
+                </div>
+                <!-- DETAIL -->
+                <div class="view hidden" id="view-detail">
+                    <div class="detail-topbar">
+                        <button id="back-btn" class="back-btn"><i class="fas fa-chevron-left"></i> Back to Matrix</button>
+                        <div class="detail-identity">
+                            <h2 class="detail-name" id="detail-name">--</h2>
+                            <div class="detail-badges"><span class="status-badge" id="detail-status-badge">--</span><span class="id-badge" id="detail-id-badge">ID: --</span></div>
+                        </div>
+                        <div class="detail-qs">
+                            <div class="qs-item"><i class="fas fa-car"></i><span id="qs-vehicles">--</span><small>vehicles</small></div>
+                            <div class="qs-item"><i class="fas fa-tachometer-alt"></i><span id="qs-speed">--</span><small>km/h</small></div>
+                        </div>
+                    </div>
+                    <div class="detail-body">
+                        <div class="detail-col">
+                            <div class="glass-panel">
+                                <div class="panel-title"><i class="fas fa-traffic-light"></i> SIGNAL STATUS</div>
+                                <div class="signal-display">
+                                    <div class="traffic-pole"><div class="pole-housing"><div class="pole-light rl" id="pl-red"></div><div class="pole-light yl" id="pl-yellow"></div><div class="pole-light gl" id="pl-green"></div></div><div class="pole-post"></div></div>
+                                    <div class="signal-meta">
+                                        <div class="signal-phase" id="sig-phase">N-S GREEN</div>
+                                        <div class="signal-countdown" id="sig-countdown">30s</div>
+                                        <div class="sig-bar-wrap"><div class="sig-bar-fill" id="sig-bar-fill"></div></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="glass-panel">
+                                <div class="panel-title"><i class="fas fa-robot"></i> AI CONFIDENCE</div>
+                                <div class="ai-ring-wrap"><canvas id="ai-ring-canvas" width="140" height="140"></canvas><div class="ai-ring-val" id="ai-ring-val">87%</div></div>
+                                <div class="ai-suggestion" id="ai-suggestion"><i class="fas fa-lightbulb"></i><span>Analyzing traffic patterns...</span></div>
+                            </div>
+                        </div>
+                        <div class="detail-col wide-col">
+                            <div class="glass-panel">
+                                <div class="panel-title"><i class="fas fa-road"></i> LANE BREAKDOWN</div>
+                                <div class="lanes-grid" id="lanes-grid"></div>
+                            </div>
+                            <button class="override-toggle-btn" id="override-toggle-btn"><i class="fas fa-sliders-h"></i><span>Show Manual Override</span></button>
+                            <div class="glass-panel hidden" id="override-panel">
+                                <div class="panel-title"><i class="fas fa-hand-pointer"></i> MANUAL OVERRIDE<span class="override-tag">OPERATOR CONTROL</span></div>
+                                <div class="override-grid" id="override-grid"></div>
+                                <button class="revert-ai-btn" id="revert-ai-btn"><i class="fas fa-brain"></i> Revert All to AI</button>
+                            </div>
+                        </div>
+                        <div class="detail-col">
+                            <div class="glass-panel">
+                                <div class="panel-title"><i class="fas fa-chart-area"></i> LANE DISTRIBUTION</div>
+                                <div class="radar-wrap"><canvas id="detail-radar"></canvas></div>
+                            </div>
+                            <div class="glass-panel">
+                                <div class="panel-title"><i class="fas fa-arrows-alt"></i> TRAFFIC FLOW</div>
+                                <div class="flow-compass">
+                                    <div class="flow-arm north"><div class="flow-dir-label">N</div><div class="flow-count" id="flow-n">--</div><div class="flow-light" id="fl-north"></div></div>
+                                    <div class="flow-arm east"><div class="flow-dir-label">E</div><div class="flow-count" id="flow-e">--</div><div class="flow-light" id="fl-east"></div></div>
+                                    <div class="flow-arm south"><div class="flow-dir-label">S</div><div class="flow-count" id="flow-s">--</div><div class="flow-light" id="fl-south"></div></div>
+                                    <div class="flow-arm west"><div class="flow-dir-label">W</div><div class="flow-count" id="flow-w">--</div><div class="flow-light" id="fl-west"></div></div>
+                                    <div class="flow-center"><i class="fas fa-crosshairs"></i></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- ANALYTICS -->
+                <div class="view hidden" id="view-analytics">
+                    <div class="analytics-grid">
+                        <div class="glass-panel a-full"><div class="panel-header"><div class="panel-title"><i class="fas fa-chart-area"></i> 24-HOUR CONGESTION TIMELINE</div><select id="analytics-select" class="cyber-select"></select></div><div class="chart-wrap-h220"><canvas id="timeline-chart"></canvas></div></div>
+                        <div class="glass-panel a-half"><div class="panel-title"><i class="fas fa-car-side"></i> VEHICLE TYPE MIX</div><div class="chart-wrap-h180"><canvas id="donut-chart"></canvas></div><div class="donut-labels" id="donut-labels"></div></div>
+                        <div class="glass-panel a-half"><div class="panel-title"><i class="fas fa-fire-alt"></i> TOP CRITICAL ZONES</div><div class="critical-zones" id="critical-zones"></div></div>
+                        <div class="glass-panel a-full"><div class="panel-header"><div class="panel-title"><i class="fas fa-chart-bar"></i> LANE VEHICLE COUNT</div></div><div class="chart-wrap-h200"><canvas id="lane-chart"></canvas></div></div>
+                    </div>
+                </div>
+                <!-- INCIDENTS -->
+                <div class="view hidden" id="view-incidents">
+                    <div class="incidents-layout">
+                        <div class="glass-panel"><div class="panel-title"><i class="fas fa-robot"></i> AI RECOMMENDATIONS</div><div id="ai-recs"></div></div>
+                        <div class="glass-panel inc-wide"><div class="panel-title"><i class="fas fa-exclamation-triangle"></i> ACTIVE INCIDENTS</div><div id="active-incidents"></div></div>
+                        <div class="glass-panel inc-full"><div class="panel-title"><i class="fas fa-scroll"></i> INCIDENT LOG &mdash; LAST 24H</div><div id="incident-log"></div></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <div id="tooltip" class="hidden">
+        <div class="tt-name" id="tt-name">--</div>
+        <div class="tt-row"><i class="fas fa-car"></i><span id="tt-vehicles">--</span></div>
+        <div class="tt-row"><i class="fas fa-tachometer-alt"></i><span id="tt-speed">--</span></div>
+        <div class="tt-status" id="tt-status">--</div>
+        <div class="tt-hint">Click to inspect</div>
+    </div>
+    <div id="loading-screen">
+        <div class="ls-inner">
+            <i class="fas fa-traffic-light ls-icon"></i>
+            <div class="ls-name">Clear<strong>Ways</strong></div>
+            <div class="ls-sub">NEXUS COMMAND INTERFACE</div>
+            <div class="ls-bar-wrap"><div class="ls-bar" id="ls-bar"></div></div>
+            <div class="ls-msg" id="ls-msg">INITIALIZING...</div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
