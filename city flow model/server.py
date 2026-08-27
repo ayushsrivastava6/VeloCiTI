@@ -34,20 +34,11 @@ def add_cors_headers(response):
 ctrl = {"paused": True, "step_delay": 0.10, "agent_interval": 3}
 
 sim_state: Dict[str, Any] = {
-    "step": 0,
-    "running": False,
-    "total_vehicles": 0,
-    "avg_travel_time": 0.0,
-    "avg_speed": 0.0,
-    "network_density": 0.0,
-    "total_waiting": 0,
-    "vehicles": [],
-    "lane_vehicles": {},
-    "lane_waiting": {},
-    "tl_phases": {},
-    "agents": {},
-    "agent_messages": [],
-    "active_incidents": [],
+    "step": 0, "running": False, "total_vehicles": 0,
+    "avg_travel_time": 0.0, "avg_speed": 0.0, "network_density": 0.0,
+    "total_waiting": 0, "vehicles": [], "lane_vehicles": {},
+    "lane_waiting": {}, "tl_phases": {}, "agents": {},
+    "agent_messages": [], "active_incidents": [],
     "ambulance": {"active": False},
     "vision": {"connected": False, "source": "NONE", "updated_at": None},
 }
@@ -67,13 +58,11 @@ def _init_simulation():
 
 def _refresh_state():
     veh_ids = eng.get_vehicles(include_waiting=True)
-    vehicles = []
-    speeds = []
+    vehicles, speeds = [], []
     for vid in veh_ids:
         try:
             info = eng.get_vehicle_info(vid)
-            spd = float(info.get("speed", 0.0))
-            speeds.append(spd)
+            speeds.append(float(info.get("speed", 0.0)))
             vehicles.append({"id": vid, **info})
         except Exception:
             pass
@@ -85,8 +74,7 @@ def _refresh_state():
     total_capacity = len(lane_vehs) * 14.0
     net_density = round(len(vehicles) / total_capacity * 100, 1) if total_capacity else 0.0
 
-    agent_states = {}
-    tl_phases = {}
+    agent_states, tl_phases = {}, {}
     for jid, agent in coordinator.agents.items():
         agent_states[jid] = agent.get_broadcast_message()
         tl_phases[jid] = {
@@ -101,22 +89,16 @@ def _refresh_state():
 
     with state_lock:
         sim_state.update({
-            "step": int(eng.get_current_time()),
-            "running": not ctrl["paused"],
+            "step": int(eng.get_current_time()), "running": not ctrl["paused"],
             "total_vehicles": len(vehicles),
             "avg_travel_time": round(eng.get_average_travel_time(), 1),
-            "avg_speed": avg_spd,
-            "network_density": net_density,
-            "total_waiting": total_waiting,
-            "vehicles": vehicles,
-            "lane_vehicles": lane_vehs,
-            "lane_waiting": lane_wait,
-            "tl_phases": tl_phases,
-            "agents": agent_states,
+            "avg_speed": avg_spd, "network_density": net_density,
+            "total_waiting": total_waiting, "vehicles": vehicles,
+            "lane_vehicles": lane_vehs, "lane_waiting": lane_wait,
+            "tl_phases": tl_phases, "agents": agent_states,
             "agent_messages": coordinator.message_history[-15:],
             "active_incidents": list(coordinator.active_incidents.values()),
-            "ambulance": dict(coordinator.ambulance),
-            "vision": vision,
+            "ambulance": dict(coordinator.ambulance), "vision": vision,
         })
 
 
@@ -143,19 +125,15 @@ def _sim_worker():
 def index():
     return send_from_directory(STATIC_DIR, "index.html")
 
-
 @app.route("/api/state")
 def get_state():
     with state_lock:
         return jsonify(dict(sim_state))
 
-
 @app.route("/api/roadnet")
 def get_roadnet():
-    path = os.path.join(BASE_DIR, "roadnet_5j.json")
-    with open(path) as f:
+    with open(os.path.join(BASE_DIR, "roadnet_5j.json")) as f:
         return jsonify(json.load(f))
-
 
 @app.route("/api/vision", methods=["POST"])
 def ingest_vision():
@@ -164,8 +142,7 @@ def ingest_vision():
     if not isinstance(junctions, dict):
         return jsonify({"ok": False, "error": "junctions must be an object"}), 400
     coordinator.set_external_observations(junctions, {
-        "connected": True,
-        "source": data.get("source", "PORTOTYPE"),
+        "connected": True, "source": data.get("source", "PORTOTYPE"),
         "updated_at": data.get("updated_at", time.time()),
         "camera_count": data.get("camera_count", 0),
         "detection_count": data.get("detection_count", 0),
@@ -173,13 +150,11 @@ def ingest_vision():
     _refresh_state()
     return jsonify({"ok": True, "source": "PORTOTYPE", "junctions": list(junctions.keys())})
 
-
 @app.route("/api/vision", methods=["DELETE"])
 def clear_vision():
     coordinator.set_external_observations({}, {"connected": False, "source": "NONE"})
     _refresh_state()
     return jsonify({"ok": True})
-
 
 @app.route("/api/control", methods=["POST"])
 def control():
@@ -203,18 +178,15 @@ def control():
         ctrl["step_delay"] = float(data.get("value", 0.10))
     return jsonify({"ok": True})
 
-
 @app.route("/api/incident", methods=["POST"])
 def handle_incident():
     data = request.get_json() or {}
-    junction = data.get("junction", "J3")
-    road = data.get("road", "road_J3_J2")
-    itype = data.get("type", "ACCIDENT")
-    active = data.get("active", True)
-    coordinator.set_incident(junction, road, itype, active)
+    coordinator.set_incident(
+        data.get("junction", "J3"), data.get("road", "road_J3_J2"),
+        data.get("type", "ACCIDENT"), data.get("active", True)
+    )
     _refresh_state()
     return jsonify({"ok": True, "incidents": list(coordinator.active_incidents.values())})
-
 
 @app.route("/api/ambulance", methods=["POST"])
 def handle_ambulance():
@@ -222,12 +194,10 @@ def handle_ambulance():
     _refresh_state()
     return jsonify({"ok": True, "ambulance": coordinator.ambulance})
 
-
 @app.route("/api/override", methods=["POST"])
 def handle_override():
     data = request.get_json() or {}
-    junction = data.get("junction")
-    phase = int(data.get("phase", 0))
+    junction, phase = data.get("junction"), int(data.get("phase", 0))
     if junction in coordinator.agents:
         agent = coordinator.agents[junction]
         agent.current_phase = phase
@@ -241,6 +211,6 @@ def handle_override():
 
 if __name__ == "__main__":
     _init_simulation()
-    t = threading.Thread(target=_sim_worker, daemon=True)
-    t.start()
-    app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False, threaded=True)
+    threading.Thread(target=_sim_worker, daemon=True).start()
+    print("CityFlow API: http://127.0.0.1:5002")
+    app.run(host="0.0.0.0", port=5002, debug=False, use_reloader=False, threaded=True)
