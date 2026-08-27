@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { initIntersections } from "../data/intersections";
 
-const CITYFLOW_URL = import.meta.env.VITE_CITYFLOW_URL || "http://localhost:5000";
+const CITYFLOW_URL = import.meta.env.VITE_CITYFLOW_URL || "http://localhost:5002";
 
 function runLocalFallback(intersections) {
   return intersections.map(int => {
@@ -48,11 +48,15 @@ function applyCityFlowState(previous, state) {
     const current = agent.current_phase;
     const yellow = agent.is_yellow;
 
+    // Split phase-level counts across the two displayed approaches so the
+    // four-lane UI does not double-count EW/NS totals.
+    const ewCount = Math.round(Number(ew.vehicle_count || 0) / 2);
+    const nsCount = Math.round(Number(ns.vehicle_count || 0) / 2);
     const lanes = [
-      { direction: "North", vehicleCount: Math.round(ns.vehicle_count || 0), averageSpeed: Math.round(ns.average_speed || 0), light: yellow ? "yellow" : current === "NS" ? "green" : "red", manualActive: false },
-      { direction: "East", vehicleCount: Math.round(ew.vehicle_count || 0), averageSpeed: Math.round(ew.average_speed || 0), light: yellow ? "yellow" : current === "EW" ? "green" : "red", manualActive: false },
-      { direction: "South", vehicleCount: Math.round(ns.vehicle_count || 0), averageSpeed: Math.round(ns.average_speed || 0), light: yellow ? "yellow" : current === "NS" ? "green" : "red", manualActive: false },
-      { direction: "West", vehicleCount: Math.round(ew.vehicle_count || 0), averageSpeed: Math.round(ew.average_speed || 0), light: yellow ? "yellow" : current === "EW" ? "green" : "red", manualActive: false },
+      { direction: "North", vehicleCount: nsCount, averageSpeed: Math.round(ns.average_speed || 0), light: yellow ? "yellow" : current === "NS" ? "green" : "red", manualActive: false },
+      { direction: "East", vehicleCount: ewCount, averageSpeed: Math.round(ew.average_speed || 0), light: yellow ? "yellow" : current === "EW" ? "green" : "red", manualActive: false },
+      { direction: "South", vehicleCount: nsCount, averageSpeed: Math.round(ns.average_speed || 0), light: yellow ? "yellow" : current === "NS" ? "green" : "red", manualActive: false },
+      { direction: "West", vehicleCount: ewCount, averageSpeed: Math.round(ew.average_speed || 0), light: yellow ? "yellow" : current === "EW" ? "green" : "red", manualActive: false },
     ];
 
     return deriveMetrics({
@@ -75,7 +79,6 @@ export function useSimulation() {
 
   useEffect(() => {
     let cancelled = false;
-
     const poll = async () => {
       try {
         const response = await fetch(`${CITYFLOW_URL}/api/state`, { cache: "no-store" });
@@ -91,19 +94,14 @@ export function useSimulation() {
         }
       }
     };
-
     poll();
     const id = setInterval(poll, 1000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
+    return () => { cancelled = true; clearInterval(id); };
   }, []);
 
   const updateLane = useCallback(async (intersectionId, direction, light) => {
     const selected = intersections.find(i => i.id === intersectionId);
     const phase = direction === "North" || direction === "South" ? 1 : 0;
-
     if (selected?.cityFlow && selected.liveJunction) {
       try {
         await fetch(`${CITYFLOW_URL}/api/override`, {
@@ -112,10 +110,9 @@ export function useSimulation() {
           body: JSON.stringify({ junction: selected.liveJunction, phase }),
         });
       } catch {
-        // Keep the local UI responsive even when CityFlow is temporarily unavailable.
+        // Keep local UI responsive if the backend is temporarily unavailable.
       }
     }
-
     setIntersections(prev => prev.map(int => {
       if (int.id !== intersectionId) return int;
       return { ...int, lanes: int.lanes.map(l => l.direction === direction ? { ...l, light, manualActive: true } : l) };
@@ -136,13 +133,14 @@ export function useSimulation() {
     }));
   }, []);
 
+  const liveNodes = cityFlowConnected ? intersections.filter(i => i.cityFlow) : intersections;
   const stats = {
-    avgCongestion: Math.round(intersections.reduce((s, i) => s + i.congestionPct, 0) / Math.max(1, intersections.length)),
-    avgSpeed: Math.round(intersections.reduce((s, i) => s + i.averageSpeed, 0) / Math.max(1, intersections.length)),
-    criticalCount: intersections.filter(i => i.status === "critical").length,
-    mediumCount: intersections.filter(i => i.status === "medium").length,
-    clearCount: intersections.filter(i => i.status === "low").length,
-    totalNodes: intersections.length,
+    avgCongestion: Math.round(liveNodes.reduce((s, i) => s + i.congestionPct, 0) / Math.max(1, liveNodes.length)),
+    avgSpeed: Math.round(liveNodes.reduce((s, i) => s + i.averageSpeed, 0) / Math.max(1, liveNodes.length)),
+    criticalCount: liveNodes.filter(i => i.status === "critical").length,
+    mediumCount: liveNodes.filter(i => i.status === "medium").length,
+    clearCount: liveNodes.filter(i => i.status === "low").length,
+    totalNodes: cityFlowConnected ? liveNodes.length : intersections.length,
     cityFlowConnected,
   };
 
