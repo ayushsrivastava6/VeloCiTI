@@ -5,9 +5,9 @@ Polls Portotype's traffic API and forwards normalized observations to the
 CityFlow /api/vision endpoint. Camera-to-junction/phase mapping is explicit
 so no geographic assumptions are silently made.
 
-Environment variables:
-  PORTOTYPE_URL=http://127.0.0.1:5001
-  CITYFLOW_URL=http://127.0.0.1:5000
+Defaults match the current repository servers:
+  PORTOTYPE_URL=http://127.0.0.1:5000
+  CITYFLOW_URL=http://127.0.0.1:5002
   VISION_POLL_SECONDS=2
   CAMERA_MAP_JSON='{"CAM_J1_EW":{"junction":"J1","phase":"EW"}}'
 
@@ -23,8 +23,8 @@ from datetime import datetime, timezone
 
 import requests
 
-PORTOTYPE_URL = os.getenv("PORTOTYPE_URL", "http://127.0.0.1:5001").rstrip("/")
-CITYFLOW_URL = os.getenv("CITYFLOW_URL", "http://127.0.0.1:5000").rstrip("/")
+PORTOTYPE_URL = os.getenv("PORTOTYPE_URL", "http://127.0.0.1:5000").rstrip("/")
+CITYFLOW_URL = os.getenv("CITYFLOW_URL", "http://127.0.0.1:5002").rstrip("/")
 POLL_SECONDS = float(os.getenv("VISION_POLL_SECONDS", "2"))
 
 
@@ -47,13 +47,11 @@ def _infer_mapping(row):
 def build_payload(rows, mapping):
     junctions = {}
     mapped_cameras = 0
-
     for row in rows:
         camera_id = str(row.get("camera_id", ""))
         cfg = mapping.get(camera_id)
         if cfg:
-            junction = cfg.get("junction")
-            phase = cfg.get("phase")
+            junction, phase = cfg.get("junction"), cfg.get("phase")
         else:
             junction, phase = _infer_mapping(row)
 
@@ -61,10 +59,7 @@ def build_payload(rows, mapping):
             continue
 
         bucket = junctions.setdefault(junction, {}).setdefault(phase, {
-            "vehicle_count": 0,
-            "queue_length": 0,
-            "average_speed": 0.0,
-            "camera_ids": [],
+            "vehicle_count": 0, "queue_length": 0, "average_speed": 0.0, "camera_ids": []
         })
         bucket["vehicle_count"] += int(row.get("unique_vehicles") or 0)
         bucket["average_speed"] += float(row.get("avg_speed") or 0.0)
@@ -80,9 +75,7 @@ def build_payload(rows, mapping):
         "source": "PORTOTYPE",
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "camera_count": mapped_cameras,
-        "detection_count": sum(
-            int(p.get("vehicle_count", 0)) for phases in junctions.values() for p in phases.values()
-        ),
+        "detection_count": sum(int(p.get("vehicle_count", 0)) for phases in junctions.values() for p in phases.values()),
         "junctions": junctions,
     }
 
@@ -93,7 +86,6 @@ def poll_once(mapping):
     rows = response.json()
     if not isinstance(rows, list):
         raise RuntimeError("Portotype /api/traffic did not return a list")
-
     payload = build_payload(rows, mapping)
     target = requests.post(f"{CITYFLOW_URL}/api/vision", json=payload, timeout=3)
     target.raise_for_status()
@@ -106,11 +98,7 @@ def main():
     while True:
         try:
             payload = poll_once(mapping)
-            print(
-                f"[vision] cameras={payload['camera_count']} "
-                f"observed_vehicles={payload['detection_count']} "
-                f"junctions={list(payload['junctions'])}"
-            )
+            print(f"[vision] cameras={payload['camera_count']} observed_vehicles={payload['detection_count']} junctions={list(payload['junctions'])}")
         except Exception as exc:
             print(f"[vision] bridge error: {exc}")
         time.sleep(POLL_SECONDS)
