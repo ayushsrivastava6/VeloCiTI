@@ -12,7 +12,7 @@ import Incidents from "./components/views/Incidents/Incidents";
 import LoadingScreen from "./components/common/LoadingScreen/LoadingScreen";
 import "./App.css";
 
-const CITYFLOW_URL = import.meta.env.VITE_CITYFLOW_URL || "http://localhost:5000";
+const CITYFLOW_URL = import.meta.env.VITE_CITYFLOW_URL || "http://localhost:5002";
 
 export default function App() {
   const [view, setView] = useState("overview");
@@ -38,9 +38,7 @@ export default function App() {
           if (!prev.isActive) return prev;
           if (prev.progress >= 100) {
             clearInterval(timer);
-            setTimeout(() => {
-              setCorridor(c => ({ ...c, isActive: false, progress: 0 }));
-            }, 2500);
+            setTimeout(() => setCorridor(c => ({ ...c, isActive: false, progress: 0 })), 2500);
             return { ...prev, progress: 100 };
           }
           return { ...prev, progress: Math.min(100, prev.progress + 3) };
@@ -64,7 +62,6 @@ export default function App() {
 
   const handleCancelCorridor = useCallback(() => {
     setCorridor(prev => ({ ...prev, isActive: false, progress: 0 }));
-    // The CityFlow ambulance completes automatically; this keeps the UI action local.
   }, []);
 
   const handleLoadingComplete = useCallback(() => setLoading(false), []);
@@ -78,31 +75,9 @@ export default function App() {
         <TopBar currentView={view} intersection={selectedIntersection} stats={stats} />
         <div className="app-content">
           {view === "overview" && <Overview intersections={intersections} stats={stats} onCellClick={handleCellClick} />}
-          {view === "map" && (
-            <MapView
-              intersections={intersections}
-              onSelectIntersection={handleCellClick}
-              corridor={corridor}
-              onCancelCorridor={handleCancelCorridor}
-            />
-          )}
-          {view === "emergency" && (
-            <EmergencyCorridor
-              intersections={intersections}
-              corridor={corridor}
-              onStartCorridor={handleStartCorridor}
-              onCancelCorridor={handleCancelCorridor}
-            />
-          )}
-          {view === "detail" && selectedIntersection && (
-            <DetailView
-              intersection={selectedIntersection}
-              onBack={handleBack}
-              onUpdateLane={updateLane}
-              onRevertLane={revertLane}
-              onRevertAll={revertAll}
-            />
-          )}
+          {view === "map" && <MapView intersections={intersections} onSelectIntersection={handleCellClick} corridor={corridor} onCancelCorridor={handleCancelCorridor} />}
+          {view === "emergency" && <EmergencyCorridor intersections={intersections} corridor={corridor} onStartCorridor={handleStartCorridor} onCancelCorridor={handleCancelCorridor} />}
+          {view === "detail" && selectedIntersection && <DetailView intersection={selectedIntersection} onBack={handleBack} onUpdateLane={updateLane} onRevertLane={revertLane} onRevertAll={revertAll} />}
           {view === "analytics" && <Analytics intersections={intersections} />}
           {view === "incidents" && <Incidents intersections={intersections} />}
         </div>
