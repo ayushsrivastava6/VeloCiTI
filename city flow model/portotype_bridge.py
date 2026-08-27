@@ -22,6 +22,13 @@ CAMERA_TO_JUNCTION = {
     "CAM_08": "J8",
 }
 
+CONGESTION_FACTOR = {
+    "LOW": 0.10,
+    "MODERATE": 0.35,
+    "HIGH": 0.65,
+    "SEVERE": 0.90,
+}
+
 
 def _configured_map():
     """Allow an optional JSON override while keeping the 8-camera default."""
@@ -43,57 +50,67 @@ def _configured_map():
         raise SystemExit("CAMERA_MAP_JSON must contain valid JSON")
 
 
-def _split_phases(row):
-    """Convert one camera-level observation into EW/NS demand.
+def _camera_observation(row):
+    """Build demand for exactly one camera's assigned junction.
 
-    Portotype currently provides one aggregate count per camera, not
-    directional counts. We therefore put the complete camera observation in
-    EW and leave NS at zero. This is intentionally explicit rather than
-    pretending the source has directional information it does not provide.
+    Portotype currently supplies an aggregate camera count rather than
+    directional lane counts. We therefore keep the observation on EW only.
+    Queue length is an explicitly marked *estimated* value derived from the
+    camera's unique-vehicle count and reported congestion class; it is not
+    presented as a direct camera measurement.
     """
     vehicles = max(0, int(row.get("unique_vehicles") or 0))
+    detections = max(0, int(row.get("total_detections") or 0))
     speed = max(0.0, float(row.get("avg_speed") or 0.0))
-    phase = {
+    congestion = str(row.get("congestion") or "UNKNOWN").upper()
+    factor = CONGESTION_FACTOR.get(congestion, 0.0)
+
+    # Conservative estimated queue: congestion class determines the fraction
+    # of unique vehicles considered queued. This can later be replaced by
+    # lane-level queue output if Portotype exposes it.
+    estimated_queue = round(vehicles * factor, 1)
+    demand_score = round(min(1.0, 0.55 * min(1.0, vehicles / 100.0) + 0.45 * factor), 3)
+
+    return {
         "vehicle_count": vehicles,
-        "queue_length": 0,
+        "queue_length": estimated_queue,
         "average_speed": round(speed, 1),
+        "waiting_score": round(factor, 3),
+        "congestion_score_external": demand_score,
         "camera_ids": [str(row.get("camera_id", ""))],
-        "congestion": row.get("congestion", "UNKNOWN"),
+        "camera_name": row.get("camera_name"),
+        "area": row.get("area"),
+        "road": row.get("road"),
+        "congestion": congestion,
+        "total_detections": detections,
+        "queue_estimated": True,
+        "source": "PORTOTYPE",
     }
-    return {"EW": phase}
 
 
 def build_payload(rows, mapping):
     junctions = {}
     mapped_cameras = 0
+    mapped_detections = 0
+
     for row in rows:
         camera_id = str(row.get("camera_id", ""))
         junction = mapping.get(camera_id)
         if junction not in {f"J{i}" for i in range(1, 9)}:
             continue
 
-        phases = junctions.setdefault(junction, {})
-        for phase, incoming in _split_phases(row).items():
-            if phase not in phases:
-                phases[phase] = incoming
-            else:
-                phases[phase]["vehicle_count"] += incoming["vehicle_count"]
-                phases[phase]["camera_ids"].extend(incoming["camera_ids"])
-                count = len(phases[phase]["camera_ids"])
-                phases[phase]["average_speed"] = round(
-                    (phases[phase]["average_speed"] * (count - 1) + incoming["average_speed"]) / count, 1
-                )
+        # One camera belongs to exactly one junction. Do not merge another
+        # camera's demand into this junction.
+        junctions[junction] = {"EW": _camera_observation(row)}
         mapped_cameras += 1
+        mapped_detections += max(0, int(row.get("total_detections") or 0))
 
     return {
         "source": "PORTOTYPE",
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "camera_count": mapped_cameras,
-        "detection_count": sum(
-            int(p.get("vehicle_count", 0))
-            for phases in junctions.values()
-            for p in phases.values()
-        ),
+        "detection_count": mapped_detections,
+        "mapping": mapping,
         "junctions": junctions,
     }
 
@@ -122,7 +139,7 @@ def main():
             payload = poll_once(mapping)
             print(
                 f"[vision] cameras={payload['camera_count']} "
-                f"observed_vehicles={payload['detection_count']} "
+                f"detections={payload['detection_count']} "
                 f"junctions={list(payload['junctions'])}"
             )
         except Exception as exc:
