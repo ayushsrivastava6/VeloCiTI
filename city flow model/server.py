@@ -24,6 +24,13 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 app = Flask(__name__, static_folder=STATIC_DIR)
 app.config["JSON_SORT_KEYS"] = False
 
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Methods"] = "GET,POST,DELETE,OPTIONS"
+    return response
+
 ctrl = {"paused": True, "step_delay": 0.10, "agent_interval": 3}
 
 sim_state: Dict[str, Any] = {
@@ -62,7 +69,6 @@ def _refresh_state():
     veh_ids = eng.get_vehicles(include_waiting=True)
     vehicles = []
     speeds = []
-
     for vid in veh_ids:
         try:
             info = eng.get_vehicle_info(vid)
@@ -153,22 +159,10 @@ def get_roadnet():
 
 @app.route("/api/vision", methods=["POST"])
 def ingest_vision():
-    """Receive normalized Portotype observations for J1-J5.
-
-    Payload shape:
-    {
-      "source": "PORTOTYPE",
-      "updated_at": "...",
-      "junctions": {
-        "J1": {"EW": {"vehicle_count": 20, "queue_length": 4, "average_speed": 28}, ...}
-      }
-    }
-    """
     data = request.get_json(silent=True) or {}
     junctions = data.get("junctions", {})
     if not isinstance(junctions, dict):
         return jsonify({"ok": False, "error": "junctions must be an object"}), 400
-
     coordinator.set_external_observations(junctions, {
         "connected": True,
         "source": data.get("source", "PORTOTYPE"),
@@ -177,11 +171,7 @@ def ingest_vision():
         "detection_count": data.get("detection_count", 0),
     })
     _refresh_state()
-    return jsonify({
-        "ok": True,
-        "source": "PORTOTYPE",
-        "junctions": list(junctions.keys()),
-    })
+    return jsonify({"ok": True, "source": "PORTOTYPE", "junctions": list(junctions.keys())})
 
 
 @app.route("/api/vision", methods=["DELETE"])
