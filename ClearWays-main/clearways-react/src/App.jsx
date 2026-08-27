@@ -12,6 +12,8 @@ import Incidents from "./components/views/Incidents/Incidents";
 import LoadingScreen from "./components/common/LoadingScreen/LoadingScreen";
 import "./App.css";
 
+const CITYFLOW_URL = import.meta.env.VITE_CITYFLOW_URL || "http://localhost:5002";
+
 export default function App() {
   const [view, setView] = useState("overview");
   const [selectedId, setSelectedId] = useState(null);
@@ -28,7 +30,6 @@ export default function App() {
   const { intersections, stats, updateLane, revertLane, revertAll } = useSimulation();
   const { time, date } = useClock();
 
-  // Transit timer when corridor is active
   useEffect(() => {
     let timer = null;
     if (corridor.isActive) {
@@ -37,10 +38,7 @@ export default function App() {
           if (!prev.isActive) return prev;
           if (prev.progress >= 100) {
             clearInterval(timer);
-            // Auto deactivate after 2.5 seconds of reaching destination
-            setTimeout(() => {
-              setCorridor(c => ({ ...c, isActive: false, progress: 0 }));
-            }, 2500);
+            setTimeout(() => setCorridor(c => ({ ...c, isActive: false, progress: 0 })), 2500);
             return { ...prev, progress: 100 };
           }
           return { ...prev, progress: Math.min(100, prev.progress + 3) };
@@ -57,12 +55,8 @@ export default function App() {
   function handleNav(v) { setView(v); if (v !== "detail") setSelectedId(null); }
 
   const handleStartCorridor = useCallback((config) => {
-    setCorridor({
-      ...config,
-      isActive: true,
-      progress: 0,
-    });
-    // Automatically switch to Map View so the user can watch the ambulance & route!
+    setCorridor({ ...config, isActive: true, progress: 0 });
+    fetch(`${CITYFLOW_URL}/api/ambulance`, { method: "POST" }).catch(() => {});
     setView("map");
   }, []);
 
@@ -70,9 +64,7 @@ export default function App() {
     setCorridor(prev => ({ ...prev, isActive: false, progress: 0 }));
   }, []);
 
-  const handleLoadingComplete = useCallback(() => {
-    setLoading(false);
-  }, []);
+  const handleLoadingComplete = useCallback(() => setLoading(false), []);
 
   if (loading) return <LoadingScreen onComplete={handleLoadingComplete} />;
 
@@ -83,31 +75,9 @@ export default function App() {
         <TopBar currentView={view} intersection={selectedIntersection} stats={stats} />
         <div className="app-content">
           {view === "overview" && <Overview intersections={intersections} stats={stats} onCellClick={handleCellClick} />}
-          {view === "map" && (
-            <MapView
-              intersections={intersections}
-              onSelectIntersection={handleCellClick}
-              corridor={corridor}
-              onCancelCorridor={handleCancelCorridor}
-            />
-          )}
-          {view === "emergency" && (
-            <EmergencyCorridor
-              intersections={intersections}
-              corridor={corridor}
-              onStartCorridor={handleStartCorridor}
-              onCancelCorridor={handleCancelCorridor}
-            />
-          )}
-          {view === "detail" && selectedIntersection && (
-            <DetailView
-              intersection={selectedIntersection}
-              onBack={handleBack}
-              onUpdateLane={updateLane}
-              onRevertLane={revertLane}
-              onRevertAll={revertAll}
-            />
-          )}
+          {view === "map" && <MapView intersections={intersections} onSelectIntersection={handleCellClick} corridor={corridor} onCancelCorridor={handleCancelCorridor} />}
+          {view === "emergency" && <EmergencyCorridor intersections={intersections} corridor={corridor} onStartCorridor={handleStartCorridor} onCancelCorridor={handleCancelCorridor} />}
+          {view === "detail" && selectedIntersection && <DetailView intersection={selectedIntersection} onBack={handleBack} onUpdateLane={updateLane} onRevertLane={revertLane} onRevertAll={revertAll} />}
           {view === "analytics" && <Analytics intersections={intersections} />}
           {view === "incidents" && <Incidents intersections={intersections} />}
         </div>
