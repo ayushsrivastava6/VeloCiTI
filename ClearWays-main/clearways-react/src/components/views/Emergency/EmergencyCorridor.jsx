@@ -1,160 +1,98 @@
-import { useState, useEffect } from "react";
-import { INTERSECTION_NAMES } from "../../../data/intersections";
+import { useState } from "react";
 import "./EmergencyCorridor.css";
 
-export default function EmergencyCorridor({ intersections, corridor, onStartCorridor, onCancelCorridor }) {
-  const [origin, setOrigin] = useState("Capital Hospital");
-  const [destination, setDestination] = useState("Bhubaneswar Airport");
-  const [vehicleType, setVehicleType] = useState("ambulance");
+const CITYFLOW_ROUTE = [
+  { junction: "J3", phase: "NS", movement: "Southbound", road: "road_J3_J7" },
+  { junction: "J7", phase: "EW", movement: "Eastbound", road: "road_J7_J8" },
+  { junction: "J8", phase: "EW", movement: "Eastbound exit", road: "road_J8_V_J8_E" },
+];
 
-  // Generate intermediate mock path
-  const intermediateNodes = [
-    origin,
-    "Forest Park",
-    "Madhusudan Nagar",
-    "Gajapati Nagar",
-    destination,
-  ].filter((v, i, a) => a.indexOf(v) === i);
-
+export default function EmergencyCorridor({ corridor, onStartCorridor, onCancelCorridor }) {
+  const [vehicleType] = useState("ambulance");
   const isActive = corridor?.isActive;
   const progress = corridor?.progress || 0;
+  const activeStage = Math.min(CITYFLOW_ROUTE.length - 1, Math.floor((progress / 100) * CITYFLOW_ROUTE.length));
 
   const handleActivate = () => {
     onStartCorridor({
-      origin,
-      destination,
       vehicleType,
-      nodes: intermediateNodes,
+      origin: "J3",
+      destination: "J8",
+      nodes: CITYFLOW_ROUTE.map(step => step.junction),
+      roadPath: CITYFLOW_ROUTE.map(step => step.road),
+      phases: CITYFLOW_ROUTE.map(step => step.phase),
     });
   };
-
-  const currentActiveIndex = Math.min(
-    intermediateNodes.length - 1,
-    Math.floor((progress / 100) * intermediateNodes.length)
-  );
 
   return (
     <div className="emergency-view">
       <div className="em-header-banner">
         <div className="em-title-box">
-          <div className="em-icon-badge">
-            <i className={`fas ${vehicleType === "ambulance" ? "fa-ambulance" : vehicleType === "fire" ? "fa-fire-extinguisher" : "fa-shield-alt"}`} />
-          </div>
+          <div className="em-icon-badge"><i className="fas fa-ambulance" /></div>
           <div>
             <div className="em-title">Emergency Dynamic Green Corridor</div>
-            <div className="em-sub">Autonomous Signal Pre-emption & Priority Dispatch Protocol</div>
+            <div className="em-sub">CityFlow 8-Junction Emergency Pre-emption</div>
           </div>
         </div>
-        {isActive && (
-          <div className="corridor-live-badge">
-            <i className="fas fa-satellite-dish" /> CORRIDOR ACTIVE — SIGNALS OVERRIDDEN
-          </div>
-        )}
+        {isActive && <div className="corridor-live-badge"><i className="fas fa-satellite-dish" /> CORRIDOR ACTIVE — SIGNALS OVERRIDDEN</div>}
       </div>
 
       <div className="em-grid">
         <div className="em-card">
-          <div className="em-card-title"><i className="fas fa-sliders-h" />Corridor Parameters</div>
-
-          <div className="em-form-group">
-            <span className="em-label">Emergency Unit Category</span>
-            <div className="em-type-grid">
-              <button
-                className={`em-type-btn ${vehicleType === "ambulance" ? "active" : ""}`}
-                onClick={() => setVehicleType("ambulance")}
-              >
-                <i className="fas fa-ambulance" style={{ fontSize: "1rem" }} />
-                Ambulance (108)
-              </button>
-              <button
-                className={`em-type-btn ${vehicleType === "fire" ? "active" : ""}`}
-                onClick={() => setVehicleType("fire")}
-              >
-                <i className="fas fa-fire-truck" style={{ fontSize: "1rem" }} />
-                Fire Rescue
-              </button>
-              <button
-                className={`em-type-btn ${vehicleType === "vip" ? "active" : ""}`}
-                onClick={() => setVehicleType("vip")}
-              >
-                <i className="fas fa-shield-alt" style={{ fontSize: "1rem" }} />
-                VIP Escort
-              </button>
+          <div className="em-card-title"><i className="fas fa-route" />Validated CityFlow Route</div>
+          <div className="corridor-status-box">
+            <div className="corridor-status-header">
+              <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text)" }}>J3 &rarr; J7 &rarr; J8</span>
+              <span style={{ fontSize: "0.7rem", color: isActive ? "var(--green)" : "var(--text3)", fontWeight: 600 }}>
+                {isActive ? `${progress}% corridor progress` : "Standby"}
+              </span>
+            </div>
+            <div style={{ height: "4px", background: "var(--surface2)", borderRadius: "99px", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${progress}%`, background: "linear-gradient(90deg, #3b82f6, #10b981)", transition: "width 0.4s ease" }} />
             </div>
           </div>
 
-          <div className="em-form-group">
-            <span className="em-label">Origin (Dispatch Station)</span>
-            <select className="em-select" value={origin} onChange={(e) => setOrigin(e.target.value)} disabled={isActive}>
-              {INTERSECTION_NAMES.map(n => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="em-form-group">
-            <span className="em-label">Destination (Emergency Facility)</span>
-            <select className="em-select" value={destination} onChange={(e) => setDestination(e.target.value)} disabled={isActive}>
-              {INTERSECTION_NAMES.map(n => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </select>
+          <div className="route-steps-container">
+            {CITYFLOW_ROUTE.map((step, index) => {
+              const cleared = isActive && index <= activeStage;
+              return (
+                <div key={step.junction} className={`route-step-row ${cleared ? "active-clearing" : ""}`}>
+                  <div className="step-number">{index + 1}</div>
+                  <div className="step-info">
+                    <span className="step-name">{step.junction} · {step.movement}</span>
+                    <span className="step-signal">
+                      <i className="fas fa-traffic-light" style={{ color: cleared ? "var(--green)" : "var(--text3)" }} />
+                      {cleared ? `FORCED ${step.phase} GREEN` : `AI CONTROL · ${step.phase}`}
+                    </span>
+                    <span className="step-signal" style={{ opacity: 0.7 }}>{step.road}</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           <div style={{ marginTop: "auto" }}>
             {!isActive ? (
               <button className="btn-activate-corridor" onClick={handleActivate}>
-                <i className="fas fa-bolt" /> ACTIVATE GREEN CORRIDOR
+                <i className="fas fa-bolt" /> ACTIVATE J3 → J7 → J8 CORRIDOR
               </button>
             ) : (
               <button className="btn-deactivate-corridor" onClick={onCancelCorridor}>
-                <i className="fas fa-power-off" /> Stand Down (Deactivate Corridor)
+                <i className="fas fa-power-off" /> Stand Down (Return to AI)
               </button>
             )}
           </div>
         </div>
 
         <div className="em-card">
-          <div className="em-card-title"><i className="fas fa-route" />Corridor Signal Synchronization</div>
-
-          <div className="corridor-status-box">
-            <div className="corridor-status-header">
-              <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text)" }}>
-                {origin} &rarr; {destination}
-              </span>
-              <span style={{ fontSize: "0.7rem", color: isActive ? "var(--green)" : "var(--text3)", fontWeight: 600 }}>
-                {isActive ? `${progress}% Transit Progress (ETA 2.5m)` : "Standby"}
-              </span>
-            </div>
-
-            <div style={{ height: "4px", background: "var(--surface2)", borderRadius: "99px", overflow: "hidden" }}>
-              <div
-                style={{
-                  height: "100%",
-                  width: `${progress}%`,
-                  background: "linear-gradient(90deg, #3b82f6, #10b981)",
-                  transition: "width 0.4s ease",
-                }}
-              />
-            </div>
-          </div>
-
+          <div className="em-card-title"><i className="fas fa-traffic-light" />Signal Pre-emption Sequence</div>
           <div className="route-steps-container">
-            {intermediateNodes.map((node, index) => {
-              const isCleared = isActive && index <= currentActiveIndex;
-              return (
-                <div key={node} className={`route-step-row ${isCleared ? "active-clearing" : ""}`}>
-                  <div className="step-number">{index + 1}</div>
-                  <div className="step-info">
-                    <span className="step-name">{node}</span>
-                    <span className="step-signal">
-                      <i className="fas fa-traffic-light" style={{ color: isActive ? "var(--green)" : "var(--text3)" }} />
-                      {isActive ? "FORCED GREEN (CLEAR)" : "AUTO AI"}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+            <div className="route-step-row"><div className="step-number">1</div><div className="step-info"><span className="step-name">J3</span><span className="step-signal">NS GREEN · ambulance moves south</span></div></div>
+            <div className="route-step-row"><div className="step-number">2</div><div className="step-info"><span className="step-name">J7</span><span className="step-signal">EW GREEN · ambulance turns east</span></div></div>
+            <div className="route-step-row"><div className="step-number">3</div><div className="step-info"><span className="step-name">J8</span><span className="step-signal">EW GREEN · clear to east exit</span></div></div>
+          </div>
+          <div style={{ marginTop: "18px", padding: "12px", borderRadius: "8px", background: "var(--surface2)", fontSize: "0.75rem", color: "var(--text2)" }}>
+            <strong>Road path:</strong> road_J3_J7 → road_J7_J8 → road_J8_V_J8_E
           </div>
         </div>
       </div>
