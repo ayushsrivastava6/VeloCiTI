@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useSimulation } from "./hooks/useSimulation";
 import { useClock } from "./hooks/useClock";
 import Sidebar from "./components/Sidebar/Sidebar";
@@ -15,7 +15,7 @@ import "./App.css";
 const CITYFLOW_URL = import.meta.env.VITE_CITYFLOW_URL || "http://localhost:5002";
 const DEFAULT_AMBULANCE_ROUTE = {
   nodes: ["J3", "J7", "J8"],
-  roadPath: ["road_J3_J7", "road_J7_J8"],
+  roadPath: ["road_J3_J7", "road_J7_J8", "road_J8_V_J8_E"],
   phases: ["NS", "EW", "EW"],
 };
 
@@ -36,6 +36,19 @@ export default function App() {
 
   const { intersections, stats, updateLane, revertLane, revertAll } = useSimulation();
   const { time, date } = useClock();
+
+  useEffect(() => {
+    if (!corridor.isActive) return undefined;
+    const timer = setInterval(() => {
+      setCorridor(prev => {
+        if (!prev.isActive) return prev;
+        const next = Math.min(100, prev.progress + (100 / 60));
+        if (next >= 100) return { ...prev, progress: 100, isActive: false };
+        return { ...prev, progress: next };
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [corridor.isActive]);
 
   const selectedIntersection = intersections.find(i => i.id === selectedId) || null;
 
@@ -63,7 +76,7 @@ export default function App() {
         phases: route.phases,
         progress: 0,
       });
-      setView("map");
+      setView("emergency");
     } catch {
       setCorridor(prev => ({ ...prev, ...config, isActive: false, progress: 0 }));
     }
