@@ -5,12 +5,11 @@ import threading
 import time
 from typing import Dict, Any
 import cityflow
-from flask import Flask, jsonify, request, send_from_directory, redirect
+from flask import Flask, jsonify, request, send_from_directory
 from integration import IntegratedCoordinator
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
-CLEARWAYS_URL = os.getenv("CLEARWAYS_URL", "http://localhost:5173")
 app = Flask(__name__, static_folder=STATIC_DIR)
 app.config["JSON_SORT_KEYS"] = False
 
@@ -87,12 +86,7 @@ def _sim_worker():
         time.sleep(ctrl["step_delay"])
 
 @app.route("/")
-def index():
-    # The CityFlow backend and ClearWays frontend are separate processes.
-    # Redirect the browser to the React dashboard so opening the backend URL
-    # does not show the legacy static dashboard with the obsolete J1-J3-J4 route.
-    return redirect(CLEARWAYS_URL, code=302)
-
+def index(): return send_from_directory(STATIC_DIR, "index.html")
 @app.route("/api/state")
 def get_state():
     with state_lock: return jsonify(dict(sim_state))
