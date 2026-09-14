@@ -57,6 +57,10 @@ function applyCityFlowState(state) {
       queueLength: Number(agent.total_queue || 0),
       vision: agent.local_obs?.EW?.source || agent.local_obs?.NS?.source,
       cameraCount: state?.vision?.camera_count,
+      visionVehicleCount: Number(ew.vehicle_count || 0) + Number(ns.vehicle_count || 0),
+      visionAverageSpeed: Math.round(((Number(ew.average_speed || 0) + Number(ns.average_speed || 0)) / Math.max(1, [ew, ns].filter(x => x.average_speed != null).length))),
+      simulationVehicleCount: Number(agent.simulation_vehicle_count || 0),
+      simulationQueueCount: Number(agent.simulation_queue_count || 0),
     });
   });
 }
