@@ -55,6 +55,11 @@ class IntegratedCoordinator:
         "J8": ({"EW": ["road_J7_J8", "road_V_J8_E_J8"], "NS": ["road_J4_J8", "road_V_J8_S_J8"]}, {"EW": None, "NS": "J4"}),
     }
 
+    # Demo emergency corridor. The ambulance gets priority at one junction,
+    # then the priority moves forward automatically.
+    AMBULANCE_CORRIDOR = [("J3", "NS"), ("J7", "NS"), ("J8", "NS")]
+    AMBULANCE_STAGE_SECONDS = 20
+
     def __init__(self, engine: Any):
         self.engine = engine
         self.agents: Dict[str, VisionTrafficAgent] = {}
@@ -63,6 +68,9 @@ class IntegratedCoordinator:
         self.message_history = []
         self.active_incidents: Dict[str, Any] = {}
         self.ambulance = {"active": False}
+        self._ambulance_stage = 0
+        self._ambulance_stage_started = None
+        self.AMBULANCE_CORRIDOR_ACTIVE = list(self.AMBULANCE_CORRIDOR)
         self._setup_network()
 
     def _setup_network(self):
@@ -94,13 +102,70 @@ class IntegratedCoordinator:
         else:
             self.active_incidents.pop(key, None)
 
-    def dispatch_ambulance(self):
-        self.ambulance = {"active": True, "junction": "J3", "timestamp": time.time()}
-        self.agents["J3"].set_emergency("NS")
+    def dispatch_ambulance(self, start_junction: str = "J3", phase: str = "NS"):
+        """Start an emergency corridor and preempt one junction at a time."""
+        if start_junction not in self.agents:
+            start_junction = "J3"
+        if phase not in self.agents[start_junction].phase_names:
+            phase = "NS"
+
+        # Remove any old emergency flags before starting a new dispatch.
+        for agent in self.agents.values():
+            agent.set_emergency(None)
+
+        corridor = list(self.AMBULANCE_CORRIDOR)
+        if (start_junction, phase) in corridor:
+            start_index = corridor.index((start_junction, phase))
+        else:
+            corridor.insert(0, (start_junction, phase))
+            start_index = 0
+
+        self.AMBULANCE_CORRIDOR_ACTIVE = corridor
+        self._ambulance_stage = start_index
+        self._ambulance_stage_started = time.time()
+
+        jid, corridor_phase = corridor[self._ambulance_stage]
+        self.agents[jid].set_emergency(corridor_phase)
+        self.ambulance = {
+            "active": True,
+            "junction": jid,
+            "phase": corridor_phase,
+            "stage": self._ambulance_stage + 1,
+            "total_stages": len(corridor),
+            "route": [item[0] for item in corridor],
+            "timestamp": time.time(),
+        }
 
     def _update_ambulance(self):
-        # Ambulance state is intentionally persistent until reset.
-        return
+        """Move emergency priority to the next junction and finish cleanly."""
+        if not self.ambulance.get("active") or self._ambulance_stage_started is None:
+            return
+
+        if time.time() - self._ambulance_stage_started < self.AMBULANCE_STAGE_SECONDS:
+            return
+
+        corridor = self.AMBULANCE_CORRIDOR_ACTIVE
+        current_junction, _ = corridor[self._ambulance_stage]
+        self.agents[current_junction].set_emergency(None)
+        self._ambulance_stage += 1
+
+        if self._ambulance_stage >= len(corridor):
+            self.ambulance = {"active": False, "completed": True, "timestamp": time.time()}
+            self._ambulance_stage_started = None
+            return
+
+        next_junction, next_phase = corridor[self._ambulance_stage]
+        self.agents[next_junction].set_emergency(next_phase)
+        self._ambulance_stage_started = time.time()
+        self.ambulance = {
+            "active": True,
+            "junction": next_junction,
+            "phase": next_phase,
+            "stage": self._ambulance_stage + 1,
+            "total_stages": len(corridor),
+            "route": [item[0] for item in corridor],
+            "timestamp": time.time(),
+        }
 
     def reset(self):
         for agent in self.agents.values():
@@ -112,3 +177,6 @@ class IntegratedCoordinator:
         self.message_history = []
         self.active_incidents = {}
         self.ambulance = {"active": False}
+        self._ambulance_stage = 0
+        self._ambulance_stage_started = None
+        self.AMBULANCE_CORRIDOR_ACTIVE = list(self.AMBULANCE_CORRIDOR)
