@@ -38,21 +38,39 @@ def _refresh_state():
     vehicles, speeds = [], []
     for vid in veh_ids:
         try:
-            info = eng.get_vehicle_info(vid); speeds.append(float(info.get("speed", 0.0))); vehicles.append({"id": vid, **info})
-        except Exception: pass
+            info = eng.get_vehicle_info(vid)
+            speeds.append(float(info.get("speed", 0.0)))
+            vehicles.append({"id": vid, **info})
+        except Exception:
+            pass
     lane_wait = eng.get_lane_waiting_vehicle_count(); lane_vehs = eng.get_lane_vehicle_count()
     total_waiting = sum(lane_wait.values()); avg_spd = round(sum(speeds)/len(speeds),1) if speeds else 0.0
     total_capacity = len(lane_vehs)*14.0; net_density = round(len(vehicles)/total_capacity*100,1) if total_capacity else 0.0
+
+    # Count actual CityFlow vehicles by the road they occupy. Using the
+    # vehicle's reported road ID is more robust than assuming every road has
+    # exactly one lane named <road>_0.
+    vehicles_by_road = {}
+    for vehicle in vehicles:
+        road_id = vehicle.get("road")
+        if road_id:
+            vehicles_by_road[road_id] = vehicles_by_road.get(road_id, 0) + 1
+
     agent_states, tl_phases = {}, {}
     for jid, agent in coordinator.agents.items():
         state = agent.get_broadcast_message()
-        simulation_vehicle_count = sum(int(lane_vehs.get(f"{road}_0", 0)) for roads in agent.incoming_roads.values() for road in roads)
-        simulation_queue_count = sum(int(lane_wait.get(f"{road}_0", 0)) for roads in agent.incoming_roads.values() for road in roads)
+        incoming_roads = [road for roads in agent.incoming_roads.values() for road in roads]
+        simulation_vehicle_count = sum(vehicles_by_road.get(road, 0) for road in incoming_roads)
+        simulation_queue_count = 0
+        for lane_id, waiting in lane_wait.items():
+            if any(str(lane_id).startswith(f"{road}_") for road in incoming_roads):
+                simulation_queue_count += int(waiting)
         state["simulation_vehicle_count"] = simulation_vehicle_count
         state["simulation_queue_count"] = simulation_queue_count
         state["simulation_source"] = "CITYFLOW"
         agent_states[jid] = state
         tl_phases[jid] = {"phase_idx": agent.current_phase,"phase_name": agent.phase_names[agent.current_phase],"is_yellow": agent.is_yellow}
+
     vision = dict(coordinator.vision_metadata); vision["connected"] = bool(coordinator.external_observations); vision["source"] = "PORTOTYPE" if coordinator.external_observations else "NONE"
     with state_lock:
         sim_state.update({"step": int(eng.get_current_time()),"running": not ctrl["paused"],"total_vehicles": len(vehicles),"avg_travel_time": round(eng.get_average_travel_time(),1),"avg_speed": avg_spd,"network_density": net_density,"total_waiting": total_waiting,"vehicles": vehicles,"lane_vehicles": lane_vehs,"lane_waiting": lane_wait,"tl_phases": tl_phases,"agents": agent_states,"agent_messages": coordinator.message_history[-15:],"active_incidents": list(coordinator.active_incidents.values()),"ambulance": dict(coordinator.ambulance),"vision": vision})
