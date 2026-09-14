@@ -47,9 +47,6 @@ def _refresh_state():
     total_waiting = sum(lane_wait.values()); avg_spd = round(sum(speeds)/len(speeds),1) if speeds else 0.0
     total_capacity = len(lane_vehs)*14.0; net_density = round(len(vehicles)/total_capacity*100,1) if total_capacity else 0.0
 
-    # Count actual CityFlow vehicles by the road they occupy. Using the
-    # vehicle's reported road ID is more robust than assuming every road has
-    # exactly one lane named <road>_0.
     vehicles_by_road = {}
     for vehicle in vehicles:
         road_id = vehicle.get("road")
@@ -118,7 +115,16 @@ def control():
 def handle_incident():
     data=request.get_json() or {}; coordinator.set_incident(data.get("junction","J3"),data.get("road","road_J3_J2"),data.get("type","ACCIDENT"),data.get("active",True)); _refresh_state(); return jsonify({"ok":True,"incidents":list(coordinator.active_incidents.values())})
 @app.route("/api/ambulance", methods=["POST"])
-def handle_ambulance(): coordinator.dispatch_ambulance(); _refresh_state(); return jsonify({"ok":True,"ambulance":coordinator.ambulance})
+def handle_ambulance():
+    data = request.get_json(silent=True) or {}
+    coordinator.dispatch_ambulance(data.get("start_junction", "J3"), data.get("phase", "NS"))
+    _refresh_state()
+    return jsonify({"ok": True, "ambulance": coordinator.ambulance})
+@app.route("/api/ambulance", methods=["DELETE"])
+def cancel_ambulance():
+    coordinator.cancel_ambulance()
+    _refresh_state()
+    return jsonify({"ok": True, "ambulance": coordinator.ambulance})
 @app.route("/api/override", methods=["POST"])
 def handle_override():
     data=request.get_json() or {}; junction, phase=data.get("junction"),int(data.get("phase",0))
