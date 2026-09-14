@@ -28,15 +28,13 @@ class TrafficAgent:
         self.engine = engine
         self.incoming_roads = incoming_roads
         self.outgoing_neighbors = outgoing_neighbors
-        self.phase_names = list(incoming_roads.keys())   # ['EW', 'NS']
-
+        self.phase_names = list(incoming_roads.keys())
         self.current_phase = 0
         self.is_yellow = False
         self.yellow_timer = 0
         self.target_phase = 0
         self.steps_on_phase = 0
         self.allocated_green = self.MIN_GREEN
-
         self.waiting_time_tracker = {p: 0 for p in self.phase_names}
         self.local_obs = {}
         self.congestion_scores = {}
@@ -49,50 +47,35 @@ class TrafficAgent:
     def observe(self, vehicle_info_map: Dict[str, Any]) -> Dict[str, Any]:
         lane_waiting = self.engine.get_lane_waiting_vehicle_count()
         lane_vehicles = self.engine.get_lane_vehicle_count()
-
         obs = {}
         for phase_name, roads in self.incoming_roads.items():
             total_veh = 0
             waiting_veh = 0
             speeds = []
-
             for r in roads:
                 lane_id = f"{r}_0"
-                w = lane_waiting.get(lane_id, 0)
-                v = lane_vehicles.get(lane_id, 0)
-                total_veh += v
-                waiting_veh += w
-
+                waiting_veh += lane_waiting.get(lane_id, 0)
+                total_veh += lane_vehicles.get(lane_id, 0)
             for v_data in vehicle_info_map.values():
                 if v_data.get("road") in roads:
                     try:
                         speeds.append(float(v_data.get("speed", 0.0)))
                     except (ValueError, TypeError):
                         pass
-
             avg_speed = round(sum(speeds) / len(speeds), 1) if speeds else 16.67
             total_cap = len(roads) * self.LANE_CAPACITY
-
             density = min(1.0, round(total_veh / total_cap, 3))
             queue_score = min(1.0, round(waiting_veh / total_cap, 3))
-
             is_active = (self.phase_names[self.current_phase] == phase_name and not self.is_yellow)
             if is_active:
                 self.waiting_time_tracker[phase_name] = max(0, self.waiting_time_tracker[phase_name] - 2)
+            elif waiting_veh > 0:
+                self.waiting_time_tracker[phase_name] += 1
             else:
-                if waiting_veh > 0:
-                    self.waiting_time_tracker[phase_name] += 1
-                else:
-                    self.waiting_time_tracker[phase_name] = 0
-
+                self.waiting_time_tracker[phase_name] = 0
             wait_sec = self.waiting_time_tracker[phase_name]
             waiting_score = min(1.0, round(wait_sec / self.STARVATION_LIMIT, 3))
-
-            cong_score = round(
-                0.50 * density + 0.30 * queue_score + 0.20 * waiting_score,
-                3
-            )
-
+            cong_score = round(0.50 * density + 0.30 * queue_score + 0.20 * waiting_score, 3)
             obs[phase_name] = {
                 "vehicle_count": total_veh,
                 "queue_length": waiting_veh,
@@ -105,53 +88,34 @@ class TrafficAgent:
                 "congestion_score": cong_score,
                 "status": "HIGH" if density > 0.55 else "MEDIUM" if density > 0.22 else "LOW"
             }
-
         self.local_obs = obs
         return obs
 
-    def compute_priority(
-        self,
-        phase_name: str,
-        neighbor_states: Dict[str, Any]
-    ) -> float:
+    def compute_priority(self, phase_name: str, neighbor_states: Dict[str, Any]) -> float:
         obs = self.local_obs.get(phase_name, {})
         local_cong = obs.get("congestion_score", 0.0)
-
         neighbor_id = self.outgoing_neighbors.get(phase_name)
         downstream_density = 0.0
         has_incident = False
-
         if neighbor_id and neighbor_id in neighbor_states:
             n_data = neighbor_states[neighbor_id]
             downstream_density = n_data.get("overall_density", 0.0)
             if n_data.get("incident_active"):
                 has_incident = True
-
         for inc in self.incidents.values():
             if inc.get("active"):
                 has_incident = True
-
-        if has_incident:
-            # Drop downstream capacity factor significantly to throttle green light toward accident
-            downstream_cap_factor = 0.05
-        else:
-            downstream_cap_factor = max(0.20, 1.0 - downstream_density)
-
+        downstream_cap_factor = 0.05 if has_incident else max(0.20, 1.0 - downstream_density)
         priority = local_cong * downstream_cap_factor
-
         wait_time = obs.get("waiting_time", 0)
         if wait_time > self.STARVATION_LIMIT:
-            boost = min(0.6, (wait_time - self.STARVATION_LIMIT) / self.STARVATION_LIMIT * 0.5)
-            priority += boost
-
+            priority += min(0.6, (wait_time - self.STARVATION_LIMIT) / self.STARVATION_LIMIT * 0.5)
         if self.emergency_override == phase_name:
             priority += 8.0
-
         return round(priority, 3)
 
     def decide_and_act(self, neighbor_states: Dict[str, Any]) -> str:
         self.step_counter += 1
-
         if self.is_yellow:
             self.yellow_timer -= 1
             if self.yellow_timer <= 0:
@@ -162,67 +126,41 @@ class TrafficAgent:
                 new_name = self.phase_names[self.current_phase]
                 self.last_decision_reason = f"Green activated for {new_name} ({self.allocated_green}s allocated)."
                 return self.last_decision_reason
-            else:
-                self.last_decision_reason = f"Yellow clearance interval ({self.yellow_timer}s remaining)."
-                return self.last_decision_reason
-
+            self.last_decision_reason = f"Yellow clearance interval ({self.yellow_timer}s remaining)."
+            return self.last_decision_reason
         self.steps_on_phase += 1
-
-        priorities = {}
-        for p in self.phase_names:
-            priorities[p] = self.compute_priority(p, neighbor_states)
+        priorities = {p: self.compute_priority(p, neighbor_states) for p in self.phase_names}
         self.priorities = priorities
-
         cur_phase_name = self.phase_names[self.current_phase]
         other_phase_idx = 1 - self.current_phase
         other_phase_name = self.phase_names[other_phase_idx]
-
         cur_priority = priorities.get(cur_phase_name, 0.0)
         other_priority = priorities.get(other_phase_name, 0.0)
-
-        # Check Active Incident on this or adjacent node
         active_inc = [i for i in self.incidents.values() if i.get("active")]
         if active_inc:
             inc_info = active_inc[0]
-            if cur_phase_name == "NS": # If accident is on NS road (e.g. road_J3_J2)
-                # Divert traffic to EW
-                if other_priority > 0.05 and self.steps_on_phase >= self.MIN_GREEN:
-                    self._initiate_switch(other_phase_idx, other_priority, f"⚠️ Accident throttling on {cur_phase_name}")
-                    return self.last_decision_reason
+            if cur_phase_name == "NS" and other_priority > 0.05 and self.steps_on_phase >= self.MIN_GREEN:
+                self._initiate_switch(other_phase_idx, other_priority, f"⚠️ Accident throttling on {cur_phase_name}")
+                return self.last_decision_reason
+            if cur_phase_name == "NS":
                 self.last_decision_reason = f"⚠️ ACCIDENT ALERT on {inc_info.get('road')}: Downstream capacity 5%. Throttling arrival flow!"
                 return self.last_decision_reason
-
-        # Emergency override check
         if self.emergency_override:
             if self.emergency_override != cur_phase_name:
                 self._initiate_switch(other_phase_idx, 1.0, "🚨 Emergency Ambulance Corridor Preemption")
                 return self.last_decision_reason
-            else:
-                self.last_decision_reason = "🚨 Holding GREEN for Ambulance Corridor."
-                return self.last_decision_reason
-
-        # Minimum green constraint
-        if self.steps_on_phase < self.MIN_GREEN:
-            remaining_min = self.MIN_GREEN - self.steps_on_phase
-            self.last_decision_reason = f"Holding {cur_phase_name}-Green (Min hold: {remaining_min}s left)."
+            self.last_decision_reason = "🚨 Holding GREEN for Ambulance Corridor."
             return self.last_decision_reason
-
-        # Maximum green constraint
+        if self.steps_on_phase < self.MIN_GREEN:
+            self.last_decision_reason = f"Holding {cur_phase_name}-Green (Min hold: {self.MIN_GREEN - self.steps_on_phase}s left)."
+            return self.last_decision_reason
         if self.steps_on_phase >= self.MAX_GREEN:
             self._initiate_switch(other_phase_idx, other_priority, "Max green duration reached")
             return self.last_decision_reason
-
-        # Starvation trigger
         other_wait = self.local_obs.get(other_phase_name, {}).get("waiting_time", 0)
         if other_wait > self.STARVATION_LIMIT and other_priority > cur_priority:
-            self._initiate_switch(
-                other_phase_idx,
-                other_priority,
-                f"Starvation prevented ({other_phase_name} waited {other_wait}s)"
-            )
+            self._initiate_switch(other_phase_idx, other_priority, f"Starvation prevented ({other_phase_name} waited {other_wait}s)")
             return self.last_decision_reason
-
-        # Standard Multi-Agent adaptive decision
         if other_priority > cur_priority * self.SWITCH_RATIO and other_priority > 0.18:
             neighbor = self.outgoing_neighbors.get(cur_phase_name)
             reason = f"Higher load on {other_phase_name} (P={other_priority} vs {cur_priority})"
@@ -231,10 +169,7 @@ class TrafficAgent:
                 reason += f" · Neighbor {neighbor} cap={int(n_cap*100)}%"
             self._initiate_switch(other_phase_idx, other_priority, reason)
             return self.last_decision_reason
-
-        self.last_decision_reason = (
-            f"Maintaining {cur_phase_name}-Green (P={cur_priority} vs {other_phase_name} P={other_priority})."
-        )
+        self.last_decision_reason = f"Maintaining {cur_phase_name}-Green (P={cur_priority} vs {other_phase_name} P={other_priority})."
         return self.last_decision_reason
 
     def _initiate_switch(self, new_phase_idx: int, priority: float, reason: str):
@@ -250,14 +185,11 @@ class TrafficAgent:
         densities = [d.get("density", 0.0) for d in self.local_obs.values()]
         queues = [d.get("queue_length", 0) for d in self.local_obs.values()]
         speeds = [d.get("average_speed", 16.67) for d in self.local_obs.values()]
-
         avg_density = round(sum(densities) / len(densities), 2) if densities else 0.0
         total_queue = sum(queues)
         avg_speed = round(sum(speeds) / len(speeds), 1) if speeds else 16.67
         avail_capacity = max(0.0, round(1.0 - avg_density, 2))
-
         active_incidents = [i for i in self.incidents.values() if i.get("active")]
-
         return {
             "sender": self.agent_id,
             "junction_id": self.junction_id,
@@ -265,6 +197,7 @@ class TrafficAgent:
             "current_phase": self.phase_names[self.current_phase] if not self.is_yellow else "YELLOW",
             "phase_idx": self.current_phase,
             "is_yellow": self.is_yellow,
+            "yellow_remaining": self.yellow_timer if self.is_yellow else 0,
             "steps_on_phase": self.steps_on_phase,
             "allocated_green": self.allocated_green,
             "overall_density": avg_density,
@@ -280,13 +213,7 @@ class TrafficAgent:
         }
 
     def set_incident(self, road_id: str, incident_type: str, active: bool = True):
-        self.incidents[road_id] = {
-            "junction": self.junction_id,
-            "road": road_id,
-            "type": incident_type,
-            "active": active,
-            "timestamp": time.time()
-        }
+        self.incidents[road_id] = {"junction": self.junction_id,"road": road_id,"type": incident_type,"active": active,"timestamp": time.time()}
 
     def set_emergency(self, phase_name: Optional[str]):
         self.emergency_override = phase_name
@@ -298,153 +225,3 @@ class TrafficAgent:
         self.target_phase = 0
         self.steps_on_phase = 0
         self.allocated_green = self.MIN_GREEN
-        self.waiting_time_tracker = {p: 0 for p in self.phase_names}
-        self.local_obs = {}
-        self.priorities = {}
-        self.incidents = {}
-        self.emergency_override = None
-        self.last_decision_reason = "Reset Complete."
-
-
-class MultiAgentCoordinator:
-    def __init__(self, engine: Any):
-        self.engine = engine
-        self.agents: Dict[str, TrafficAgent] = {}
-        self.message_history: List[Dict[str, Any]] = []
-
-        self.ambulance: Dict[str, Any] = {
-            "active": False,
-            "progress_m": 0.0,
-            "speed": 16.0,
-            "route_roads": ["road_VW1_J1", "road_J1_J3", "road_J3_J4", "road_J4_VE4"],
-            "current_road": "road_VW1_J1",
-            "road_dist": 0.0,
-            "corridor": "EW"
-        }
-
-        self.active_incidents: Dict[str, Any] = {}
-        self._setup_network()
-
-    def _setup_network(self):
-        self.agents["J1"] = TrafficAgent(
-            agent_id="Agent-J1", junction_id="J1", engine=self.engine,
-            incoming_roads={"EW": ["road_VW1_J1", "road_J3_J1"], "NS": ["road_VN1_J1", "road_VS1_J1"]},
-            outgoing_neighbors={"EW": "J3", "NS": None}
-        )
-
-        self.agents["J2"] = TrafficAgent(
-            agent_id="Agent-J2", junction_id="J2", engine=self.engine,
-            incoming_roads={"EW": ["road_VW2_J2", "road_VE2_J2"], "NS": ["road_VN2_J2", "road_J3_J2"]},
-            outgoing_neighbors={"EW": None, "NS": "J3"}
-        )
-
-        self.agents["J3"] = TrafficAgent(
-            agent_id="Agent-J3", junction_id="J3", engine=self.engine,
-            incoming_roads={"EW": ["road_J1_J3", "road_J4_J3"], "NS": ["road_J2_J3", "road_J5_J3"]},
-            outgoing_neighbors={"EW": "J4", "NS": "J5"}
-        )
-
-        self.agents["J4"] = TrafficAgent(
-            agent_id="Agent-J4", junction_id="J4", engine=self.engine,
-            incoming_roads={"EW": ["road_J3_J4", "road_VE4_J4"], "NS": ["road_VN4_J4", "road_VS4_J4"]},
-            outgoing_neighbors={"EW": "J3", "NS": None}
-        )
-
-        self.agents["J5"] = TrafficAgent(
-            agent_id="Agent-J5", junction_id="J5", engine=self.engine,
-            incoming_roads={"EW": ["road_VW5_J5", "road_VE5_J5"], "NS": ["road_J3_J5", "road_VS5_J5"]},
-            outgoing_neighbors={"EW": None, "NS": "J3"}
-        )
-
-    def step(self, vehicle_info_map: Dict[str, Any]) -> Dict[str, Any]:
-        self._update_ambulance()
-
-        for agent in self.agents.values():
-            agent.observe(vehicle_info_map)
-
-        current_broadcasts = {}
-        for jid, agent in self.agents.items():
-            msg = agent.get_broadcast_message()
-            current_broadcasts[jid] = msg
-
-        for jid, msg in current_broadcasts.items():
-            if len(self.message_history) > 100:
-                self.message_history.pop(0)
-            self.message_history.append(msg)
-
-        decisions = {}
-        for jid, agent in self.agents.items():
-            reason = agent.decide_and_act(current_broadcasts)
-            decisions[jid] = reason
-
-        return {
-            "broadcasts": current_broadcasts,
-            "decisions": decisions,
-            "ambulance": dict(self.ambulance)
-        }
-
-    def _update_ambulance(self):
-        if not self.ambulance["active"]:
-            return
-
-        self.ambulance["progress_m"] += self.ambulance["speed"]
-        prog = self.ambulance["progress_m"]
-
-        if prog < 200:
-            self.ambulance["current_road"] = "road_VW1_J1"
-            self.ambulance["road_dist"] = prog
-            self.agents["J1"].set_emergency("EW")
-            self.agents["J3"].set_emergency("EW")
-        elif prog < 400:
-            self.ambulance["current_road"] = "road_J1_J3"
-            self.ambulance["road_dist"] = prog - 200
-            self.agents["J1"].set_emergency(None)
-            self.agents["J3"].set_emergency("EW")
-            self.agents["J4"].set_emergency("EW")
-        elif prog < 600:
-            self.ambulance["current_road"] = "road_J3_J4"
-            self.ambulance["road_dist"] = prog - 400
-            self.agents["J3"].set_emergency(None)
-            self.agents["J4"].set_emergency("EW")
-        elif prog < 800:
-            self.ambulance["current_road"] = "road_J4_VE4"
-            self.ambulance["road_dist"] = prog - 600
-            self.agents["J4"].set_emergency(None)
-        else:
-            self.ambulance["active"] = False
-            self.ambulance["progress_m"] = 0.0
-            for agent in self.agents.values():
-                agent.set_emergency(None)
-
-    def dispatch_ambulance(self):
-        self.ambulance["active"] = True
-        self.ambulance["progress_m"] = 0.0
-        self.ambulance["current_road"] = "road_VW1_J1"
-        self.ambulance["road_dist"] = 0.0
-        self.agents["J1"].set_emergency("EW")
-        self.agents["J3"].set_emergency("EW")
-
-    def set_incident(self, junction_id: str, road_id: str, incident_type: str, active: bool = True):
-        if active:
-            self.active_incidents[road_id] = {
-                "junction": junction_id,
-                "road": road_id,
-                "type": incident_type,
-                "active": True
-            }
-        else:
-            self.active_incidents.pop(road_id, None)
-
-        if junction_id in self.agents:
-            self.agents[junction_id].set_incident(road_id, incident_type, active)
-        # Also inform upstream neighbor J2 and J5
-        for jid, ag in self.agents.items():
-            ag.set_incident(road_id, incident_type, active)
-
-    def reset(self):
-        for agent in self.agents.values():
-            agent.reset()
-        self.message_history.clear()
-        self.active_incidents.clear()
-        self.ambulance["active"] = False
-        self.ambulance["progress_m"] = 0.0
