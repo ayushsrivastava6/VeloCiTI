@@ -6,8 +6,9 @@ multi-agent controller. The controller is configured for eight junctions,
 one per Portotype camera.
 """
 
+import time
 from typing import Any, Dict, Optional
-from agent import MultiAgentCoordinator, TrafficAgent
+from agent import TrafficAgent
 
 
 class VisionTrafficAgent(TrafficAgent):
@@ -40,8 +41,8 @@ class VisionTrafficAgent(TrafficAgent):
         return obs
 
 
-class IntegratedCoordinator(MultiAgentCoordinator):
-    """Eight-junction CityFlow coordinator with Portotype observations."""
+class IntegratedCoordinator:
+    """Eight-junction coordinator with Portotype observations."""
 
     JUNCTIONS = {
         "J1": ({"EW": ["road_V_J1_W_J1", "road_J2_J1"], "NS": ["road_V_J1_N_J1", "road_J5_J1"]}, {"EW": "J2", "NS": "J5"}),
@@ -55,9 +56,14 @@ class IntegratedCoordinator(MultiAgentCoordinator):
     }
 
     def __init__(self, engine: Any):
+        self.engine = engine
+        self.agents: Dict[str, VisionTrafficAgent] = {}
         self.external_observations: Dict[str, Dict[str, Any]] = {}
         self.vision_metadata: Dict[str, Any] = {}
-        super().__init__(engine)
+        self.message_history = []
+        self.active_incidents: Dict[str, Any] = {}
+        self.ambulance = {"active": False}
+        self._setup_network()
 
     def _setup_network(self):
         for jid, (incoming, neighbors) in self.JUNCTIONS.items():
@@ -73,8 +79,36 @@ class IntegratedCoordinator(MultiAgentCoordinator):
             agent.observe(vehicle_info_map, self.external_observations.get(jid))
         current_broadcasts = {jid: agent.get_broadcast_message() for jid, agent in self.agents.items()}
         for msg in current_broadcasts.values():
-            if len(self.message_history) > 100:
-                self.message_history.pop(0)
             self.message_history.append(msg)
+        self.message_history = self.message_history[-100:]
         decisions = {jid: agent.decide_and_act(current_broadcasts) for jid, agent in self.agents.items()}
         return {"broadcasts": current_broadcasts, "decisions": decisions, "ambulance": dict(self.ambulance), "vision": dict(self.vision_metadata)}
+
+    def set_incident(self, junction: str, road: str, incident_type: str, active: bool = True):
+        if junction not in self.agents:
+            return
+        self.agents[junction].set_incident(road, incident_type, active)
+        key = f"{junction}:{road}"
+        if active:
+            self.active_incidents[key] = {"junction": junction, "road": road, "type": incident_type, "active": True, "timestamp": time.time()}
+        else:
+            self.active_incidents.pop(key, None)
+
+    def dispatch_ambulance(self):
+        self.ambulance = {"active": True, "junction": "J3", "timestamp": time.time()}
+        self.agents["J3"].set_emergency("NS")
+
+    def _update_ambulance(self):
+        # Ambulance state is intentionally persistent until reset.
+        return
+
+    def reset(self):
+        for agent in self.agents.values():
+            agent.reset()
+            agent.incidents.clear()
+            agent.set_emergency(None)
+        self.external_observations = {}
+        self.vision_metadata = {}
+        self.message_history = []
+        self.active_incidents = {}
+        self.ambulance = {"active": False}
