@@ -12,14 +12,11 @@ export default function DetailView({ intersection, onBack, onUpdateLane, onRever
   const [cctvState, setCctvState] = useState({ isOpen: false, direction: "North" });
 
   const statusLabel = intersection.status === "critical" ? "Critical Congestion" : intersection.status === "medium" ? "Moderate Traffic" : "Clear Traffic";
+  const visionVehicles = Number(intersection.visionVehicleCount || intersection.vehicleCount || 0);
+  const simulationVehicles = Number(intersection.simulationVehicleCount || 0);
 
-  const handleOpenCCTV = (dir = "North") => {
-    setCctvState({ isOpen: true, direction: dir });
-  };
-
-  const handleCloseCCTV = () => {
-    setCctvState({ isOpen: false, direction: "North" });
-  };
+  const handleOpenCCTV = (dir = "North") => setCctvState({ isOpen: true, direction: dir });
+  const handleCloseCCTV = () => setCctvState({ isOpen: false, direction: "North" });
 
   return (
     <div className="detail-view">
@@ -32,40 +29,27 @@ export default function DetailView({ intersection, onBack, onUpdateLane, onRever
             <div className="dv-title">{intersection.name}</div>
           </div>
           <span className={`dv-badge ${intersection.status}`}>{statusLabel}</span>
-          <button
-            className="dv-cctv-header-btn"
-            onClick={() => handleOpenCCTV("North")}
-            title="Launch Live CCTV Camera Matrix"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "6px 12px",
-              background: "rgba(59, 130, 246, 0.15)",
-              border: "1px solid rgba(59, 130, 246, 0.35)",
-              color: "#3b82f6",
-              borderRadius: "var(--radius-sm)",
-              fontSize: "0.75rem",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
+          <button className="dv-cctv-header-btn" onClick={() => handleOpenCCTV("North")} title="Launch Live CCTV Camera Matrix" style={{ display: "flex", alignItems: "center", gap: "6px", padding: "6px 12px", background: "rgba(59, 130, 246, 0.15)", border: "1px solid rgba(59, 130, 246, 0.35)", color: "#3b82f6", borderRadius: "var(--radius-sm)", fontSize: "0.75rem", fontWeight: 600, cursor: "pointer" }}>
             <i className="fas fa-video" /> Live CCTV Feed
           </button>
         </div>
 
         <div className="dv-stats">
           <div className="dv-stat-item">
-            <span className="dv-stat-val">{intersection.vehicleCount}</span>
-            <span className="dv-stat-lbl">Vehicles</span>
+            <span className="dv-stat-val">{visionVehicles}</span>
+            <span className="dv-stat-lbl">Camera Vehicles</span>
+          </div>
+          <div className="dv-stat-item">
+            <span className="dv-stat-val">{simulationVehicles}</span>
+            <span className="dv-stat-lbl">Sim Vehicles</span>
           </div>
           <div className="dv-stat-item">
             <span className="dv-stat-val">{intersection.averageSpeed}</span>
-            <span className="dv-stat-lbl">km/h</span>
+            <span className="dv-stat-lbl">Vision km/h</span>
           </div>
           <div className="dv-stat-item">
             <span className="dv-stat-val">{intersection.congestionPct}%</span>
-            <span className="dv-stat-lbl">Load</span>
+            <span className="dv-stat-lbl">Vision Load</span>
           </div>
         </div>
       </div>
@@ -75,31 +59,17 @@ export default function DetailView({ intersection, onBack, onUpdateLane, onRever
           <SignalStatus intersection={intersection} />
           <AIPanel intersection={intersection} />
         </div>
-
         <div className="dv-col">
           <LaneBreakdown intersection={intersection} onOpenCCTV={handleOpenCCTV} />
-          <ManualOverride
-            intersection={intersection}
-            onUpdateLane={onUpdateLane}
-            onRevertLane={onRevertLane}
-            onRevertAll={onRevertAll}
-          />
+          <ManualOverride intersection={intersection} onUpdateLane={onUpdateLane} onRevertLane={onRevertLane} onRevertAll={onRevertAll} />
         </div>
-
         <div className="dv-col">
           <DetailRadar intersection={intersection} />
           <TrafficFlow intersection={intersection} />
         </div>
       </div>
 
-      {/* Live CCTV Video Modal */}
-      {cctvState.isOpen && (
-        <CCTVModal
-          intersection={intersection}
-          initialDirection={cctvState.direction}
-          onClose={handleCloseCCTV}
-        />
-      )}
+      {cctvState.isOpen && <CCTVModal intersection={intersection} initialDirection={cctvState.direction} onClose={handleCloseCCTV} />}
     </div>
   );
 }
