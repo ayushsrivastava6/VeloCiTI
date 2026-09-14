@@ -55,9 +55,12 @@ class IntegratedCoordinator:
         "J8": ({"EW": ["road_J7_J8", "road_V_J8_E_J8"], "NS": ["road_J4_J8", "road_V_J8_S_J8"]}, {"EW": None, "NS": "J4"}),
     }
 
-    # Demo emergency corridor. The ambulance gets priority at one junction,
-    # then the priority moves forward automatically.
-    AMBULANCE_CORRIDOR = [("J3", "NS"), ("J7", "NS"), ("J8", "NS")]
+    # Demo emergency corridor following the actual 2x4 CityFlow layout:
+    # J3 -> J7 is southbound (NS), then J7 -> J8 is eastbound (EW).
+    # J8 keeps the eastbound phase green while the ambulance clears the
+    # final junction toward the virtual east exit.
+    AMBULANCE_CORRIDOR = [("J3", "NS"), ("J7", "EW"), ("J8", "EW")]
+    AMBULANCE_ROAD_PATH = ["road_J3_J7", "road_J7_J8"]
     AMBULANCE_STAGE_SECONDS = 20
 
     def __init__(self, engine: Any):
@@ -103,22 +106,22 @@ class IntegratedCoordinator:
             self.active_incidents.pop(key, None)
 
     def dispatch_ambulance(self, start_junction: str = "J3", phase: str = "NS"):
-        """Start an emergency corridor and preempt one junction at a time."""
+        """Start the physical CityFlow corridor represented by the 8-junction road layout."""
         if start_junction not in self.agents:
             start_junction = "J3"
         if phase not in self.agents[start_junction].phase_names:
             phase = "NS"
 
-        # Remove any old emergency flags before starting a new dispatch.
-        for agent in self.agents.values():
-            agent.set_emergency(None)
-
+        # The default corridor is the validated J3 -> J7 -> J8 route.
         corridor = list(self.AMBULANCE_CORRIDOR)
         if (start_junction, phase) in corridor:
             start_index = corridor.index((start_junction, phase))
         else:
             corridor.insert(0, (start_junction, phase))
             start_index = 0
+
+        for agent in self.agents.values():
+            agent.set_emergency(None)
 
         self.AMBULANCE_CORRIDOR_ACTIVE = corridor
         self._ambulance_stage = start_index
@@ -133,8 +136,19 @@ class IntegratedCoordinator:
             "stage": self._ambulance_stage + 1,
             "total_stages": len(corridor),
             "route": [item[0] for item in corridor],
+            "road_path": list(self.AMBULANCE_ROAD_PATH),
+            "route_description": "J3 → J7 → J8",
             "timestamp": time.time(),
         }
+
+    def cancel_ambulance(self):
+        """Release emergency pre-emption and return all junctions to AI control."""
+        for agent in self.agents.values():
+            agent.set_emergency(None)
+        self._ambulance_stage = 0
+        self._ambulance_stage_started = None
+        self.AMBULANCE_CORRIDOR_ACTIVE = list(self.AMBULANCE_CORRIDOR)
+        self.ambulance = {"active": False, "cancelled": True, "timestamp": time.time()}
 
     def _update_ambulance(self):
         """Move emergency priority to the next junction and finish cleanly."""
@@ -150,7 +164,7 @@ class IntegratedCoordinator:
         self._ambulance_stage += 1
 
         if self._ambulance_stage >= len(corridor):
-            self.ambulance = {"active": False, "completed": True, "timestamp": time.time()}
+            self.ambulance = {"active": False, "completed": True, "route": [item[0] for item in corridor], "road_path": list(self.AMBULANCE_ROAD_PATH), "route_description": "J3 → J7 → J8", "timestamp": time.time()}
             self._ambulance_stage_started = None
             return
 
@@ -164,6 +178,8 @@ class IntegratedCoordinator:
             "stage": self._ambulance_stage + 1,
             "total_stages": len(corridor),
             "route": [item[0] for item in corridor],
+            "road_path": list(self.AMBULANCE_ROAD_PATH),
+            "route_description": "J3 → J7 → J8",
             "timestamp": time.time(),
         }
 
