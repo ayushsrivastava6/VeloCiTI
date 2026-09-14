@@ -1,4 +1,4 @@
-﻿import "./KPIRow.css";
+import "./KPIRow.css";
 
 export default function KPIRow({ stats }) {
   const congColor = stats.avgCongestion > 70 ? "red" : stats.avgCongestion > 40 ? "amber" : "green";
@@ -9,7 +9,7 @@ export default function KPIRow({ stats }) {
         <div>
           <div className="kpi-num">{stats.totalNodes}</div>
           <div className="kpi-label">Total Nodes</div>
-          <div className="kpi-sub">30 unique intersections</div>
+          <div className="kpi-sub">Live CityFlow junctions</div>
         </div>
       </div>
       <div className="kpi-card">
