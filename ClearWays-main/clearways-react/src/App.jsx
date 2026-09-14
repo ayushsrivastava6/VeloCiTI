@@ -34,7 +34,7 @@ export default function App() {
     progress: 0,
   });
 
-  const { intersections, stats } = useSimulation();
+  const { intersections, stats, updateLane, revertLane, revertAll } = useSimulation();
   const { time, date } = useClock();
 
   const selectedIntersection = intersections.find(i => i.id === selectedId) || null;
@@ -44,8 +44,7 @@ export default function App() {
   function handleNav(v) { setView(v); if (v !== "detail") setSelectedId(null); }
 
   const handleStartCorridor = useCallback(async (config) => {
-    const isDefaultDemoRoute = config?.nodes?.length === 3 && config.nodes.join(",") === "J3,J7,J8";
-    const route = isDefaultDemoRoute ? DEFAULT_AMBULANCE_ROUTE : DEFAULT_AMBULANCE_ROUTE;
+    const route = DEFAULT_AMBULANCE_ROUTE;
     try {
       const response = await fetch(`${CITYFLOW_URL}/api/ambulance`, {
         method: "POST",
@@ -88,7 +87,7 @@ export default function App() {
           {view === "overview" && <Overview intersections={intersections} stats={stats} onCellClick={handleCellClick} />}
           {view === "map" && <MapView intersections={intersections} onSelectIntersection={handleCellClick} corridor={corridor} onCancelCorridor={handleCancelCorridor} />}
           {view === "emergency" && <EmergencyCorridor intersections={intersections} corridor={corridor} onStartCorridor={handleStartCorridor} onCancelCorridor={handleCancelCorridor} />}
-          {view === "detail" && selectedIntersection && <DetailView intersection={selectedIntersection} onBack={handleBack} />}
+          {view === "detail" && selectedIntersection && <DetailView intersection={selectedIntersection} onBack={handleBack} onUpdateLane={updateLane} onRevertLane={revertLane} onRevertAll={revertAll} />}
           {view === "analytics" && <Analytics intersections={intersections} />}
           {view === "incidents" && <Incidents intersections={intersections} />}
         </div>
